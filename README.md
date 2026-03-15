@@ -1,0 +1,169 @@
+# GitHub Trending Viewer v1.0.0
+
+一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译和个人 Star 仓库动态监控。
+
+![GitHub Trending Viewer](https://via.placeholder.com/800x400/0d1117/0969da?text=GitHub+Trending+Viewer)
+
+## ✨ 功能特性
+
+### 🎯 核心功能
+- **🔥 热门趋势查看** - 查看 GitHub 每日/每周/每月热门项目
+- **🔍 多语言筛选** - 支持按编程语言筛选
+- **🌏 全中文界面** - 完整的汉化 UI 和提示信息
+
+### ⭐ Star 相关
+- **Star 状态显示** - 显示你是否已 Star该项目
+- **一键跳转** - 点击跳转到 GitHub 页面
+
+### 📊 排名追踪
+- **排名变化指示** - 显示排名上升↑/下降↓/保持—
+- **新上榜标记** - 标记首次出现的项目
+- **颜色标识** - 绿色(上升)、红色(下降)、灰色(保持)、蓝色(新上榜)
+
+### 🤖 AI 增强
+- **DeepSeek 翻译** - 使用 DeepSeek AI 将项目描述翻译为中文
+- **智能翻译** - 比机器翻译更自然的本地化体验
+
+### 📱 我的 Star 动态
+- **仓库更新监控** - 追踪你 Star 的仓库的最新 Release 和提交
+- **时间线展示** - 按时间排序的活动流
+- **过滤噪音** - 自动过滤 "谁 Star 了" 等不相关事件
+
+## 🚀 快速开始
+
+### 本地开发
+
+```bash
+# 安装依赖
+npm install
+
+# 启动服务
+npm start
+
+# 访问 http://localhost:3000
+```
+
+### 开发模式（热重载）
+
+```bash
+npm run dev
+```
+
+## 🐳 Docker 部署
+
+### 方式一：一键部署到 NAS
+
+```bash
+# Windows
+deploy-to-nas.bat 192.168.31.14 admin
+
+# Linux/Mac
+./deploy-to-nas.sh 192.168.31.14 admin
+```
+
+### 方式二：手动部署
+
+```bash
+# 1. 复制文件到 NAS
+scp -r . user@nas:/path/to/deploy
+
+# 2. 构建并启动
+docker compose up -d --build
+
+# 3. 访问 http://NAS_IP:3000
+```
+
+## ⚙️ 配置说明
+
+### GitHub Token（可选）
+
+用于查询 Star 状态和翻译功能：
+
+```bash
+# .env 文件
+GITHUB_TOKEN=ghp_your_token_here
+DEEPSEEK_API_KEY=sk-your_deepseek_key
+```
+
+获取 GitHub Token: https://github.com/settings/tokens (需要 `public_repo` 或 `user` 权限)
+
+获取 DeepSeek API Key: https://platform.deepseek.com
+
+## 📡 API 接口
+
+### 获取热门项目
+
+```
+GET /api/trending?since=weekly&language=javascript
+```
+
+参数：
+- `since`: `daily` | `weekly` | `monthly`
+- `language`: 编程语言（如 `javascript`, `python`）
+
+### 获取语言列表
+
+```
+GET /api/languages
+```
+
+### 检查 Star 状态
+
+```
+POST /api/check-starred
+Body: { "repos": [{ "owner": "user", "name": "repo" }] }
+```
+
+### 获取 Star 仓库动态
+
+```
+GET /api/starred-activity
+```
+
+### 预取所有周期数据
+
+```
+GET /api/prefetch-all
+```
+
+## 🏗️ 项目结构
+
+```
+github-trending-viewer/
+├── server.js              # Express 后端服务
+├── package.json           # 项目依赖
+├── docker-compose.yml     # Docker 配置
+├── .env.example          # 环境变量示例
+├── public/
+│   ├── index.html        # 主页面
+│   ├── styles.css        # 样式文件
+│   └── app.js            # 前端逻辑
+├── data/                  # 数据存储（排名历史）
+└── SETUP.md              # 配置指南
+```
+
+## 🛠️ 技术栈
+
+- **后端**: Node.js + Express
+- **前端**: 原生 HTML/CSS/JavaScript
+- **数据抓取**: Cheerio + Axios
+- **翻译**: DeepSeek AI
+- **部署**: Docker
+
+## 📝 更新日志
+
+### v1.0.0 (2026-02-01)
+- ✨ 首发版本
+- 🌏 全中文 UI
+- ⭐ Star 状态查询
+- 📊 排名变化追踪
+- 🤖 DeepSeek AI 翻译
+- 📱 Star 仓库动态监控
+
+## 📄 许可证
+
+MIT License
+
+---
+
+**GitHub Trending Viewer** - 让 GitHub 趋势更易懂 🚀
