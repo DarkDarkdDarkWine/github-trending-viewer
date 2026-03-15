@@ -12,6 +12,7 @@ services:
       - PORT=3000
       - GITHUB_TOKEN=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
       - DEEPSEEK_API_KEY=sk-b8822a7fc6344b6386f68599f1f8db53
+      - DATABASE_URL=postgresql://admin:shared2024@192.168.31.14:5433/github_trending
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/languages"]
       interval: 30s
