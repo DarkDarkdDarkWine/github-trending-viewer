@@ -37,15 +37,16 @@ async function saveTrendingData(repos, since, language = '') {
   const p = getPool();
   if (!p) return { skipped: true, reason: 'DATABASE_URL not configured' };
 
-  const client = await p.connect();
+  let client;
   try {
+    client = await p.connect();
     await client.query('BEGIN');
 
     // Upsert trending_records
     const upsertResult = await client.query(
       `INSERT INTO trending_records (since, language, collected_at)
        VALUES ($1, $2, NOW())
-       ON CONFLICT ON CONSTRAINT uix_records_since_date
+       ON CONFLICT (since, DATE(collected_at))
        DO UPDATE SET collected_at = NOW()
        RETURNING id`,
       [since, language]
@@ -89,10 +90,10 @@ async function saveTrendingData(repos, since, language = '') {
     console.log(`DB: saved ${repos.length} repos for ${since}`);
     return { success: true, recordId, count: repos.length };
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client?.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    client?.release();
   }
 }
 
