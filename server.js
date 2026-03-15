@@ -1,4 +1,5 @@
 require('dotenv').config();
+const db = require('./db');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -482,8 +483,21 @@ app.get('/api/prefetch-all', async (req, res) => {
     for (const since of periods) {
       try {
         const repos = await scrapeTrending(since, '');
+        // 原有 JSON 历史（兼容排名变化功能）
         await updateRankingHistory(repos, since, '');
-        results.push({ since, success: true, count: repos.length });
+
+        // 写入数据库（降级：失败不中断）
+        try {
+          const dbResult = await db.saveTrendingData(
+            repos.map((r, i) => ({ ...r, rank: i + 1 })),
+            since,
+            ''   // language：当前 prefetch-all 只抓全语言榜
+          );
+          results.push({ since, success: true, count: repos.length, db: dbResult });
+        } catch (dbErr) {
+          console.error(`DB write failed for ${since}:`, dbErr.message);
+          results.push({ since, success: true, count: repos.length, db: { error: dbErr.message } });
+        }
       } catch (err) {
         results.push({ since, success: false, error: err.message });
       }
