@@ -147,6 +147,46 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBtn.addEventListener('click', fetchTrending);
 });
 
+// Stream translations and update each card as results arrive
+async function streamTranslations(repos) {
+    const texts = repos
+        .map((repo, index) => repo.description ? { index, text: repo.description } : null)
+        .filter(Boolean);
+
+    if (texts.length === 0) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ texts })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const { index, translation } = JSON.parse(line.slice(6));
+                const card = document.querySelector(`[data-repo-index="${index}"]`);
+                const el = card && card.querySelector('.repo-description');
+                if (el) el.textContent = translation;
+            }
+        }
+    } catch (error) {
+        console.warn('Translation stream failed:', error);
+    }
+}
+
 // Silent prefetch all periods for ranking history
 async function prefetchAllPeriods() {
     try {
@@ -195,6 +235,9 @@ async function fetchTrending() {
 
         // Check starred status
         await checkStarredStatus(currentRepos);
+
+        // Stream translations in background, update cards as they come in
+        streamTranslations(currentRepos);
 
         // Silent prefetch all periods for ranking history
         prefetchAllPeriods();
@@ -291,7 +334,7 @@ function createRepoCard(repo, rank) {
     const languageColor = LANGUAGE_COLORS[repo.language] || '#8b949e';
 
     return `
-        <div class="repo-card">
+        <div class="repo-card" data-repo-index="${rank - 1}">
             <div class="repo-header">
                 <div class="repo-rank">${rank}</div>
                 <div class="repo-info">
@@ -303,7 +346,7 @@ function createRepoCard(repo, rank) {
                         ${createRankingChange(repo.rankingChange)}
                         ${createStarStatus(repo.author, repo.name)}
                     </div>
-                    ${repo.descriptionZh || repo.description ? `<p class="repo-description">${escapeHtml(repo.descriptionZh || repo.description)}</p>` : ''}
+                    ${repo.description ? `<p class="repo-description">${escapeHtml(repo.description)}</p>` : ''}
                     <div class="repo-stats">
                         ${createStat('⭐', 'stars', formatNumber(repo.stars), '总星标数')}
                         ${createStat('🔱', 'forks', formatNumber(repo.forks), 'Fork数')}

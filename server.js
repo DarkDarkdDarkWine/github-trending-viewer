@@ -182,12 +182,9 @@ async function scrapeTrending(since = 'daily', language = '') {
       });
     });
 
-    // Translate descriptions to Chinese
-    await Promise.all(repos.map(async (repo, index) => {
-      if (repo.description) {
-        repos[index].descriptionZh = await translateToChinese(repo.description);
-      }
-    }));
+    // Sort by current period stars descending, take top 20
+    repos.sort((a, b) => b.currentPeriodStars - a.currentPeriodStars);
+    repos.splice(20);
 
     return repos;
   } catch (error) {
@@ -521,6 +518,25 @@ app.get('/api/languages', (req, res) => {
   ];
 
   res.json(languages);
+});
+
+// SSE endpoint: translate descriptions, stream results as they complete
+app.post('/api/translate', async (req, res) => {
+  const { texts } = req.body; // [{index, text}, ...]
+  if (!texts || texts.length === 0) {
+    return res.status(400).json({ error: 'No texts provided' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  await Promise.all(texts.map(async ({ index, text }) => {
+    const translation = await translateToChinese(text);
+    res.write(`data: ${JSON.stringify({ index, translation })}\n\n`);
+  }));
+
+  res.end();
 });
 
 app.listen(PORT, () => {

@@ -1,4 +1,4 @@
-# GitHub Trending Viewer v1.0.0
+# GitHub Trending Viewer v1.1.0
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译和个人 Star 仓库动态监控。
 
@@ -21,7 +21,7 @@
 - **颜色标识** - 绿色(上升)、红色(下降)、灰色(保持)、蓝色(新上榜)
 
 ### 🤖 AI 增强
-- **DeepSeek 翻译** - 使用 DeepSeek AI 将项目描述翻译为中文
+- **DeepSeek 流式翻译** - 页面加载后立即展示，翻译结果逐条推送更新，无需等待全部完成
 - **智能翻译** - 比机器翻译更自然的本地化体验
 
 ### 📱 我的 Star 动态
@@ -101,6 +101,17 @@ GET /api/trending?since=weekly&language=javascript
 - `since`: `daily` | `weekly` | `monthly`
 - `language`: 编程语言（如 `javascript`, `python`）
 
+返回按本周期新增 star 数降序排列，最多 20 条。
+
+### 流式翻译（SSE）
+
+```
+POST /api/translate
+Body: { "texts": [{ "index": 0, "text": "description" }] }
+```
+
+以 SSE 格式逐条返回翻译结果：`data: {"index": 0, "translation": "..."}`
+
 ### 获取语言列表
 
 ```
@@ -151,6 +162,11 @@ github-trending-viewer/
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.1.0 (2026-03-16)
+- 📊 各周期榜单按本周期新增 star 数排序，取前 20 名
+- ⚡ AI 翻译改为流式推送（SSE）：页面立即展示英文，翻译逐条到达后原地更新，不再等待全部完成
+- 🔌 新增 `/api/translate` SSE 端点
 
 ### v1.0.0 (2026-02-01)
 - ✨ 首发版本
