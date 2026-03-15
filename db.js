@@ -46,7 +46,7 @@ async function saveTrendingData(repos, since, language = '') {
     const upsertResult = await client.query(
       `INSERT INTO trending_records (since, language, collected_at)
        VALUES ($1, $2, NOW())
-       ON CONFLICT (since, (DATE(collected_at)))
+       ON CONFLICT (since, language)
        DO UPDATE SET collected_at = NOW()
        RETURNING id`,
       [since, language]

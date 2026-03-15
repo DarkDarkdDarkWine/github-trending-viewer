@@ -11,6 +11,7 @@ RUN npm install --production
 
 # Copy application files
 COPY server.js ./
+COPY db.js ./
 COPY public ./public
 
 # Expose port
