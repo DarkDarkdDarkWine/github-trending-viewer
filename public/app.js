@@ -31,7 +31,7 @@ async function loadStarredActivity() {
         const result = await response.json();
 
         if (!result.success) {
-            container.innerHTML = `<div class="activity-empty">${result.message || '加载失败'}</div>`;
+            container.innerHTML = `<div class="activity-empty">${escapeHtml(result.message || '加载失败')}</div>`;
             return;
         }
 
@@ -54,10 +54,12 @@ function createActivityItem(event) {
     const timeAgo = formatTimeAgo(event.created_at);
     const actionText = getActionText(event);
     const detailsHtml = getDetailsHtml(event);
+    const repoDisplay = escapeHtml(event.repo);
+    const repoHref = escapeAttr(`https://github.com/${event.repo}`);
 
     return `
         <div class="activity-item">
-            <a href="https://github.com/${event.repo}" target="_blank" class="activity-repo">${event.repo}</a>
+            <a href="${repoHref}" target="_blank" class="activity-repo">${repoDisplay}</a>
             <div class="activity-details">
                 <strong>${actionText}</strong>
                 ${detailsHtml ? ` · ${detailsHtml}` : ''}
@@ -69,24 +71,31 @@ function createActivityItem(event) {
 
 // Get action text based on event type
 function getActionText(event) {
+    const action = escapeHtml(event.details?.action || '');
+    const type = escapeHtml(event.details?.type || '');
     const actions = {
         'PushEvent': '提交代码',
-        'PullRequestEvent': `${event.details.action} PR`,
-        'IssuesEvent': `${event.details.action} Issue`,
+        'PullRequestEvent': `${action} PR`,
+        'IssuesEvent': `${action} Issue`,
         'ReleaseEvent': '发布新版本',
-        'CreateEvent': `创建 ${event.details.type}`,
-        'DeleteEvent': `删除 ${event.details.type}`
+        'CreateEvent': `创建 ${type}`,
+        'DeleteEvent': `删除 ${type}`
     };
-    return actions[event.type] || event.type;
+    return actions[event.type] || escapeHtml(event.type);
 }
 
-// Get details HTML based on event type
+// Get details HTML based on event type — all user-supplied values escaped
 function getDetailsHtml(event) {
     const d = event.details;
-    if (d.message) return d.message.substring(0, 80) + (d.message.length > 80 ? '...' : '');
-    if (d.tag) return `🏷️ ${d.tag}` + (d.name ? ` - ${d.name}` : '');
-    if (d.title) return `📌 ${d.title}`;
-    if (d.name) return `${d.type}: ${d.name}`;
+    if (d.message) {
+        const msg = d.message.substring(0, 80) + (d.message.length > 80 ? '...' : '');
+        return escapeHtml(msg);
+    }
+    if (d.tag) {
+        return `🏷️ ${escapeHtml(d.tag)}` + (d.name ? ` - ${escapeHtml(d.name)}` : '');
+    }
+    if (d.title) return `📌 ${escapeHtml(d.title)}`;
+    if (d.name) return `${escapeHtml(d.type)}: ${escapeHtml(d.name)}`;
     return '';
 }
 
@@ -125,7 +134,6 @@ const LANGUAGE_COLORS = {
 
 // DOM Elements
 const timeRangeSelect = document.getElementById('timeRange');
-const languageSelect = document.getElementById('language');
 const refreshBtn = document.getElementById('refreshBtn');
 const loadingEl = document.getElementById('loading');
 const errorEl = document.getElementById('error');
@@ -138,12 +146,9 @@ let starredStatus = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    loadLanguages();
     fetchTrending();
 
-    // Event listeners
     timeRangeSelect.addEventListener('change', fetchTrending);
-    languageSelect.addEventListener('change', fetchTrending);
     refreshBtn.addEventListener('click', fetchTrending);
 });
 
@@ -187,42 +192,15 @@ async function streamTranslations(repos) {
     }
 }
 
-// Silent prefetch all periods for ranking history
-async function prefetchAllPeriods() {
-    try {
-        await fetch(`${API_BASE}/api/prefetch-all`);
-    } catch (error) {
-        console.warn('Prefetch failed:', error);
-    }
-}
-
-// Load available languages
-async function loadLanguages() {
-    try {
-        const response = await fetch(`${API_BASE}/api/languages`);
-        const languages = await response.json();
-
-        languageSelect.innerHTML = languages
-            .map(lang => `<option value="${lang.value}">${lang.label}</option>`)
-            .join('');
-    } catch (error) {
-        console.error('加载语言列表失败:', error);
-    }
-}
-
 // Fetch trending repositories
 async function fetchTrending() {
     const since = timeRangeSelect.value;
-    const language = languageSelect.value;
 
     showLoading();
     hideError();
 
     try {
-        const response = await fetch(
-            `${API_BASE}/api/trending?since=${since}&language=${encodeURIComponent(language)}`
-        );
-
+        const response = await fetch(`${API_BASE}/api/trending?since=${since}`);
         const result = await response.json();
 
         if (!result.success) {
@@ -233,14 +211,9 @@ async function fetchTrending() {
         displayRepositories(currentRepos);
         updateStats(currentRepos.length);
 
-        // Check starred status
         await checkStarredStatus(currentRepos);
 
-        // Stream translations in background, update cards as they come in
         streamTranslations(currentRepos);
-
-        // Silent prefetch all periods for ranking history
-        prefetchAllPeriods();
     } catch (error) {
         console.error('获取热门项目出错:', error);
         showError(error.message);
@@ -269,7 +242,6 @@ async function checkStarredStatus(repos) {
                 starredStatus[key] = item.starred;
             });
 
-            // Re-render with star status
             displayRepositories(currentRepos);
         }
     } catch (error) {
@@ -283,7 +255,7 @@ function displayRepositories(repos) {
         repositoriesEl.innerHTML = `
             <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
                 <p style="font-size: 1.2rem;">未找到热门项目</p>
-                <p style="margin-top: 0.5rem;">请尝试选择不同的时间范围或编程语言</p>
+                <p style="margin-top: 0.5rem;">请尝试选择不同的时间范围</p>
             </div>
         `;
         return;
@@ -319,19 +291,24 @@ function createStarStatus(author, name) {
     const starred = starredStatus[key];
 
     if (starred === null || starred === undefined) {
-        return ''; // No token configured or status unknown
+        return '';
     }
 
     if (starred) {
         return '<span class="star-status starred" title="已Star">⭐ 已Star</span>';
     }
 
-    return `<a href="https://github.com/${author}/${name}" target="_blank" class="star-status not-starred" title="点击前往Star">☆ Star</a>`;
+    const href = escapeAttr(`https://github.com/${author}/${name}`);
+    return `<a href="${href}" target="_blank" class="star-status not-starred" title="点击前往Star">☆ Star</a>`;
 }
 
 // Create repository card HTML
 function createRepoCard(repo, rank) {
     const languageColor = LANGUAGE_COLORS[repo.language] || '#8b949e';
+    const repoHref = escapeAttr(repo.url);
+    const authorDisplay = escapeHtml(repo.author);
+    const nameDisplay = escapeHtml(repo.name);
+    const languageDisplay = repo.language ? escapeHtml(repo.language) : '';
 
     return `
         <div class="repo-card" data-repo-index="${rank - 1}">
@@ -339,10 +316,10 @@ function createRepoCard(repo, rank) {
                 <div class="repo-rank">${rank}</div>
                 <div class="repo-info">
                     <div class="repo-title">
-                        <a href="${repo.url}" target="_blank" rel="noopener">
-                            ${repo.author} / ${repo.name}
+                        <a href="${repoHref}" target="_blank" rel="noopener">
+                            ${authorDisplay} / ${nameDisplay}
                         </a>
-                        ${repo.language ? `<span class="repo-language">${repo.language}</span>` : ''}
+                        ${languageDisplay ? `<span class="repo-language">${languageDisplay}</span>` : ''}
                         ${createRankingChange(repo.rankingChange)}
                         ${createStarStatus(repo.author, repo.name)}
                     </div>
@@ -373,15 +350,21 @@ function createStat(icon, className, value, title) {
 function createBuiltBy(contributors) {
     const avatars = contributors
         .slice(0, 5)
-        .map(contributor => `
-            <a href="${contributor.url}" target="_blank" rel="noopener" title="${contributor.username}">
+        .map(contributor => {
+            const href = escapeAttr(contributor.url);
+            const src = escapeAttr(contributor.avatar);
+            const username = escapeAttr(contributor.username);
+            const usernameDisplay = escapeHtml(contributor.username);
+            return `
+            <a href="${href}" target="_blank" rel="noopener" title="${username}">
                 <img
-                    src="${contributor.avatar}"
-                    alt="${contributor.username}"
+                    src="${src}"
+                    alt="${usernameDisplay}"
                     style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--card-background);"
                 />
             </a>
-        `)
+        `;
+        })
         .join('');
 
     return `
@@ -432,8 +415,19 @@ function formatNumber(num) {
     return num.toString();
 }
 
+// Escape for HTML text content
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Escape for HTML attribute values (handles double quotes which escapeHtml does not)
+function escapeAttr(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }

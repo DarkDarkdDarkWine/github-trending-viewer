@@ -1,18 +1,15 @@
-# GitHub Trending Viewer v1.1.0
+# GitHub Trending Viewer v1.2.0
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译和个人 Star 仓库动态监控。
-
-![GitHub Trending Viewer](https://via.placeholder.com/800x400/0d1117/0969da?text=GitHub+Trending+Viewer)
 
 ## ✨ 功能特性
 
 ### 🎯 核心功能
 - **🔥 热门趋势查看** - 查看 GitHub 每日/每周/每月热门项目
-- **🔍 多语言筛选** - 支持按编程语言筛选
 - **🌏 全中文界面** - 完整的汉化 UI 和提示信息
 
 ### ⭐ Star 相关
-- **Star 状态显示** - 显示你是否已 Star该项目
+- **Star 状态显示** - 显示你是否已 Star 该项目
 - **一键跳转** - 点击跳转到 GitHub 页面
 
 ### 📊 排名追踪
@@ -94,12 +91,11 @@ DEEPSEEK_API_KEY=sk-your_deepseek_key
 ### 获取热门项目
 
 ```
-GET /api/trending?since=weekly&language=javascript
+GET /api/trending?since=weekly
 ```
 
 参数：
 - `since`: `daily` | `weekly` | `monthly`
-- `language`: 编程语言（如 `javascript`, `python`）
 
 返回按本周期新增 star 数降序排列，最多 20 条。
 
@@ -111,12 +107,6 @@ Body: { "texts": [{ "index": 0, "text": "description" }] }
 ```
 
 以 SSE 格式逐条返回翻译结果：`data: {"index": 0, "translation": "..."}`
-
-### 获取语言列表
-
-```
-GET /api/languages
-```
 
 ### 检查 Star 状态
 
@@ -131,17 +121,12 @@ Body: { "repos": [{ "owner": "user", "name": "repo" }] }
 GET /api/starred-activity
 ```
 
-### 预取所有周期数据
-
-```
-GET /api/prefetch-all
-```
-
 ## 🏗️ 项目结构
 
 ```
 github-trending-viewer/
 ├── server.js              # Express 后端服务
+├── db.js                  # PostgreSQL 数据库模块
 ├── package.json           # 项目依赖
 ├── docker-compose.yml     # Docker 配置
 ├── .env.example          # 环境变量示例
@@ -163,9 +148,20 @@ github-trending-viewer/
 
 ## 📝 更新日志
 
+### v1.2.0 (2026-03-18)
+- 🗑️ 移除语言筛选功能，简化前后端复杂度
+- 🗑️ 移除 `/api/prefetch-all`，消除每次浏览时的隐式三轮额外抓取
+- 🔒 修复前端多处 XSS 风险，新增 `escapeAttr()` 覆盖 HTML 属性上下文
+- 🐛 修复 DB `trending_records.language` 冗余列，已执行 migration 删除
+- 🐛 修复无 GitHub Token 时 `/api/check-starred` 返回 `null[]` 导致前端报错
+- 📈 Star 动态改为拉取最近更新的 starred 仓库（`sort=updated`），检查范围从 10 扩大至 30
+- 📈 Star 动态同时拉取 releases 和 commits，不再因有 release 而屏蔽 commit 动态
+- 🛡️ 抓取结果为空时抛出结构变更错误，不再静默返回空数据
+- 🔧 新增 ESLint 配置
+
 ### v1.1.0 (2026-03-16)
 - 📊 各周期榜单按本周期新增 star 数排序，取前 20 名
-- ⚡ AI 翻译改为流式推送（SSE）：页面立即展示英文，翻译逐条到达后原地更新，不再等待全部完成
+- ⚡ AI 翻译改为流式推送（SSE）：页面立即展示英文，翻译逐条到达后原地更新
 - 🔌 新增 `/api/translate` SSE 端点
 
 ### v1.0.0 (2026-02-01)

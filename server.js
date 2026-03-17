@@ -1,5 +1,4 @@
 require('dotenv').config();
-const db = require('./db');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -43,16 +42,15 @@ async function saveRankingHistory(history) {
 }
 
 // Update ranking history - record last result of each period per day
-async function updateRankingHistory(repos, since, language) {
+async function updateRankingHistory(repos, since) {
   const history = await loadRankingHistory();
   const now = new Date().toISOString();
   const today = now.split('T')[0];
-  const key = `${today}-${since}-${language || 'all'}`;
+  const key = `${today}-${since}`;
 
   const record = {
     timestamp: now,
     since,
-    language: language || 'all',
     key,
     repos: repos.map((repo, index) => ({
       rank: index + 1,
@@ -63,7 +61,6 @@ async function updateRankingHistory(repos, since, language) {
     }))
   };
 
-  // 更新或添加今天的记录（覆盖）
   history.records = history.records || [];
   const existingIndex = history.records.findIndex(r => r.key === key);
   if (existingIndex >= 0) {
@@ -80,14 +77,14 @@ async function updateRankingHistory(repos, since, language) {
   await saveRankingHistory(history);
 }
 
-// Get ranking changes - compare with last record from previous day/period
-async function getRankingChanges(repos, since, language) {
+// Get ranking changes - compare with last record from previous day
+async function getRankingChanges(repos, since) {
   const history = await loadRankingHistory();
   const today = new Date().toISOString().split('T')[0];
 
-  // 找到今天之前的最近一条记录（上一次周期）
+  // 找到今天之前的最近一条同周期记录
   const previousRecord = history.records
-    .filter(r => r.since === since && r.language === (language || 'all'))
+    .filter(r => r.since === since)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .find(r => !r.timestamp.startsWith(today));
 
@@ -114,13 +111,9 @@ async function getRankingChanges(repos, since, language) {
 }
 
 // Scrape GitHub trending page
-async function scrapeTrending(since = 'daily', language = '') {
+async function scrapeTrending(since = 'daily') {
   try {
-    let url = `https://github.com/trending`;
-    if (language) {
-      url += `/${language}`;
-    }
-    url += `?since=${since}`;
+    const url = `https://github.com/trending?since=${since}`;
 
     const response = await axios.get(url, {
       headers: {
@@ -134,31 +127,23 @@ async function scrapeTrending(since = 'daily', language = '') {
     $('article.Box-row').each((index, element) => {
       const $elem = $(element);
 
-      // Get repo name and author
       const repoLink = $elem.find('h2 a').attr('href');
       if (!repoLink) return;
 
       const [, author, name] = repoLink.split('/');
 
-      // Get description
       const description = $elem.find('p.col-9').text().trim();
-
-      // Get language
       const language = $elem.find('[itemprop="programmingLanguage"]').text().trim();
 
-      // Get stars
       const starsText = $elem.find('a[href$="/stargazers"]').text().trim();
       const stars = parseNumber(starsText);
 
-      // Get forks
       const forksText = $elem.find('a[href$="/forks"]').text().trim();
       const forks = parseNumber(forksText);
 
-      // Get stars today/this week/this month
       const starsSpan = $elem.find('span.float-sm-right').text().trim();
       const currentPeriodStars = parseNumber(starsSpan.split(' ')[0]);
 
-      // Get built by avatars
       const builtBy = [];
       $elem.find('img[alt^="@"]').each((i, img) => {
         const username = $(img).attr('alt').replace('@', '');
@@ -174,7 +159,7 @@ async function scrapeTrending(since = 'daily', language = '') {
         name,
         url: `https://github.com${repoLink}`,
         description: description || '',
-        descriptionZh: '', // Placeholder for Chinese translation
+        descriptionZh: '',
         language: language || '',
         stars,
         forks,
@@ -183,7 +168,11 @@ async function scrapeTrending(since = 'daily', language = '') {
       });
     });
 
-    // Sort by current period stars descending, take top 20
+    // 结构校验：如果抓取结果为空，说明 GitHub 页面结构可能已变更
+    if (repos.length === 0) {
+      throw new Error('Scraping returned 0 repos — GitHub page structure may have changed');
+    }
+
     repos.sort((a, b) => b.currentPeriodStars - a.currentPeriodStars);
     repos.splice(20);
 
@@ -252,7 +241,7 @@ async function translateToChinese(text) {
 // Check if user starred a repository
 async function checkStarred(owner, repo) {
   if (!GITHUB_TOKEN) {
-    return null; // Token not configured
+    return null;
   }
 
   try {
@@ -275,30 +264,26 @@ async function checkStarred(owner, repo) {
 // API endpoint to get trending repositories
 app.get('/api/trending', async (req, res) => {
   try {
-    const { since = 'daily', language = '' } = req.query;
+    const { since = 'daily' } = req.query;
 
-    console.log(`Fetching trending repos: since=${since}, language=${language}`);
+    console.log(`Fetching trending repos: since=${since}`);
 
-    const repos = await scrapeTrending(since, language);
+    const repos = await scrapeTrending(since);
+    const changes = await getRankingChanges(repos, since);
 
-    // Get ranking changes
-    const changes = await getRankingChanges(repos, since, language);
-
-    // Add ranking changes to repos
     const reposWithChanges = repos.map((repo, index) => ({
       ...repo,
       rankingChange: changes[index]
     }));
 
-    // Update history (async, don't wait)
-    updateRankingHistory(repos, since, language).catch(err => {
+    updateRankingHistory(repos, since).catch(err => {
       console.error('Failed to update ranking history:', err);
     });
 
     res.json({
       success: true,
       data: reposWithChanges,
-      params: { since, language }
+      params: { since }
     });
   } catch (error) {
     console.error('Error fetching trending repos:', error);
@@ -317,7 +302,7 @@ app.post('/api/check-starred', async (req, res) => {
     if (!GITHUB_TOKEN) {
       return res.json({
         success: true,
-        data: repos.map(() => null),
+        data: repos.map(r => ({ owner: r.owner, name: r.name, starred: null })),
         message: 'GitHub token not configured'
       });
     }
@@ -342,7 +327,7 @@ app.post('/api/check-starred', async (req, res) => {
   }
 });
 
-// Get user's starred repositories
+// Get user's starred repositories, sorted by recently updated
 async function getStarredRepos() {
   if (!GITHUB_TOKEN) return [];
 
@@ -352,7 +337,7 @@ async function getStarredRepos() {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json'
       },
-      params: { per_page: 100 }
+      params: { per_page: 100, sort: 'updated', direction: 'desc' }
     });
     return response.data.map(repo => ({
       owner: repo.owner.login,
@@ -370,18 +355,23 @@ async function getStarredRepos() {
   }
 }
 
-// Get recent activity for a repo - only repo's own updates
+// Get recent activity for a repo — always fetch both releases and commits
 async function getRepoActivity(owner, repo) {
   const activities = [];
 
-  try {
-    // Get releases
-    const releasesRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/releases`, {
+  const [releasesRes, commitsRes] = await Promise.allSettled([
+    axios.get(`https://api.github.com/repos/${owner}/${repo}/releases`, {
       headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
       params: { per_page: 5 }
-    });
+    }),
+    axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+      headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
+      params: { per_page: 5 }
+    })
+  ]);
 
-    for (const release of releasesRes.data || []) {
+  if (releasesRes.status === 'fulfilled') {
+    for (const release of releasesRes.value.data || []) {
       activities.push({
         type: 'ReleaseEvent',
         repo: `${owner}/${repo}`,
@@ -391,50 +381,22 @@ async function getRepoActivity(owner, repo) {
         details: { tag: release.tag_name, name: release.name, body: release.body }
       });
     }
-  } catch (e) {}
+  }
 
-  try {
-    // Get recent commits (if no releases, show commits)
-    if (activities.length === 0) {
-      const commitsRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
-        headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
-        params: { per_page: 5 }
+  if (commitsRes.status === 'fulfilled') {
+    for (const commit of commitsRes.value.data || []) {
+      activities.push({
+        type: 'PushEvent',
+        repo: `${owner}/${repo}`,
+        actor: commit.author?.login || commit.commit?.author?.name || 'unknown',
+        avatar: commit.author?.avatar_url || '',
+        created_at: commit.commit?.author?.date,
+        details: { message: commit.commit?.message?.split('\n')[0], sha: commit.sha?.substring(0, 7) }
       });
-
-      for (const commit of commitsRes.data || []) {
-        activities.push({
-          type: 'PushEvent',
-          repo: `${owner}/${repo}`,
-          actor: commit.author?.login || commit.commit?.author?.name || 'unknown',
-          avatar: commit.author?.avatar_url || '',
-          created_at: commit.commit?.author?.date,
-          details: { message: commit.commit?.message?.split('\n')[0], sha: commit.sha?.substring(0, 7) }
-        });
-      }
     }
-  } catch (e) {}
+  }
 
   return activities.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-}
-
-// Extract event details
-function getEventDetails(event) {
-  switch (event.type) {
-    case 'PushEvent':
-      return { commits: event.payload.size, branch: event.payload.ref?.replace('refs/heads/', '') };
-    case 'PullRequestEvent':
-      return { action: event.payload.action, title: event.payload.pull_request?.title };
-    case 'IssuesEvent':
-      return { action: event.payload.action, title: event.payload.issue?.title };
-    case 'ReleaseEvent':
-      return { action: event.payload.action, tag: event.payload.release?.tag_name };
-    case 'CreateEvent':
-      return { type: event.payload.ref_type, name: event.payload.ref };
-    case 'WatchEvent':
-      return { action: 'starred' };
-    default:
-      return {};
-  }
 }
 
 // Get starred repos activity
@@ -449,15 +411,14 @@ app.get('/api/starred-activity', async (req, res) => {
       return res.json({ success: true, data: [], message: 'No starred repos found' });
     }
 
-    // Get activity for first 10 repos (to avoid rate limit)
-    const activityPromises = repos.slice(0, 10).map(async repo => {
+    // 取前 30 个最近有更新的仓库检查动态（sort=updated 已保证顺序）
+    const activityPromises = repos.slice(0, 30).map(async repo => {
       const events = await getRepoActivity(repo.owner, repo.name);
       return { repo, events: events.slice(0, 5) };
     });
 
     const results = await Promise.all(activityPromises);
 
-    // Flatten and sort by time
     const allEvents = [];
     results.forEach(({ repo, events }) => {
       events.forEach(event => {
@@ -474,69 +435,9 @@ app.get('/api/starred-activity', async (req, res) => {
   }
 });
 
-// Silent background fetch all periods for history
-app.get('/api/prefetch-all', async (req, res) => {
-  try {
-    const periods = ['daily', 'weekly', 'monthly'];
-    const results = [];
-
-    for (const since of periods) {
-      try {
-        const repos = await scrapeTrending(since, '');
-        // 原有 JSON 历史（兼容排名变化功能）
-        await updateRankingHistory(repos, since, '');
-
-        // 写入数据库（降级：失败不中断）
-        try {
-          const dbResult = await db.saveTrendingData(
-            repos.map((r, i) => ({ ...r, rank: i + 1 })),
-            since,
-            ''   // language：当前 prefetch-all 只抓全语言榜
-          );
-          results.push({ since, success: true, count: repos.length, db: dbResult });
-        } catch (dbErr) {
-          console.error(`DB write failed for ${since}:`, dbErr.message);
-          results.push({ since, success: true, count: repos.length, db: { error: dbErr.message } });
-        }
-      } catch (err) {
-        results.push({ since, success: false, error: err.message });
-      }
-    }
-
-    res.json({ success: true, results });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get available languages
-app.get('/api/languages', (req, res) => {
-  const languages = [
-    { value: '', label: '所有语言' },
-    { value: 'javascript', label: 'JavaScript' },
-    { value: 'typescript', label: 'TypeScript' },
-    { value: 'python', label: 'Python' },
-    { value: 'java', label: 'Java' },
-    { value: 'go', label: 'Go' },
-    { value: 'rust', label: 'Rust' },
-    { value: 'c++', label: 'C++' },
-    { value: 'c', label: 'C' },
-    { value: 'php', label: 'PHP' },
-    { value: 'ruby', label: 'Ruby' },
-    { value: 'swift', label: 'Swift' },
-    { value: 'kotlin', label: 'Kotlin' },
-    { value: 'dart', label: 'Dart' },
-    { value: 'shell', label: 'Shell' },
-    { value: 'vue', label: 'Vue' },
-    { value: 'react', label: 'React' },
-  ];
-
-  res.json(languages);
-});
-
 // SSE endpoint: translate descriptions, stream results as they complete
 app.post('/api/translate', async (req, res) => {
-  const { texts } = req.body; // [{index, text}, ...]
+  const { texts } = req.body;
   if (!texts || texts.length === 0) {
     return res.status(400).json({ error: 'No texts provided' });
   }

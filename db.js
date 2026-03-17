@@ -33,7 +33,7 @@ async function testConnection() {
 }
 
 // 保存一个周期的榜单数据（单事务）
-async function saveTrendingData(repos, since, language = '') {
+async function saveTrendingData(repos, since) {
   const p = getPool();
   if (!p) return { skipped: true, reason: 'DATABASE_URL not configured' };
 
@@ -42,14 +42,15 @@ async function saveTrendingData(repos, since, language = '') {
     client = await p.connect();
     await client.query('BEGIN');
 
-    // Upsert trending_records
+    // Upsert trending_records — conflict key (since, collect_date) is correct
+    // now that language filtering has been removed
     const upsertResult = await client.query(
-      `INSERT INTO trending_records (since, language, collected_at, collect_date)
-       VALUES ($1, $2, NOW(), CURRENT_DATE)
+      `INSERT INTO trending_records (since, collected_at, collect_date)
+       VALUES ($1, NOW(), CURRENT_DATE)
        ON CONFLICT (since, collect_date)
        DO UPDATE SET collected_at = NOW()
        RETURNING id`,
-      [since, language]
+      [since]
     );
     const recordId = upsertResult.rows[0].id;
 
