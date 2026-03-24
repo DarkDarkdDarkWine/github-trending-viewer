@@ -15,6 +15,9 @@ tabBtns.forEach(btn => {
         if (tab === 'starred') {
             loadStarredActivity();
         }
+        if (tab === 'reports') {
+            loadReports();
+        }
     });
 });
 
@@ -431,3 +434,203 @@ function escapeAttr(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+
+// ─── 趋势报告 ───────────────────────────────────────────────────────────────
+
+const reportsLoading = document.getElementById('reports-loading');
+const reportsList = document.getElementById('reports-list');
+const reportDetail = document.getElementById('report-detail');
+const reportDetailContent = document.getElementById('report-detail-content');
+document.getElementById('reportBackBtn').addEventListener('click', showReportList);
+
+const REPORT_TYPE_LABEL = { weekly: '周报', monthly: '月报' };
+const STATUS_LABEL = { pending: '生成中', done: '已完成', failed: '生成失败' };
+const STATUS_CLASS = { pending: 'status-pending', done: 'status-done', failed: 'status-failed' };
+
+async function loadReports() {
+    reportsLoading.classList.remove('hidden');
+    reportsList.innerHTML = '';
+    reportDetail.classList.add('hidden');
+    reportsList.classList.remove('hidden');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/reports`);
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error);
+
+        if (result.data.length === 0) {
+            reportsList.innerHTML = '<div class="activity-empty">暂无报告，每周一和每月1日自动生成</div>';
+            return;
+        }
+
+        // 按类型分组
+        const grouped = { weekly: [], monthly: [] };
+        result.data.forEach(r => {
+            if (grouped[r.report_type]) grouped[r.report_type].push(r);
+        });
+
+        let html = '';
+        for (const [type, reports] of Object.entries(grouped)) {
+            if (reports.length === 0) continue;
+            html += `<div class="report-group"><h2 class="report-group-title">${REPORT_TYPE_LABEL[type] || type}</h2>`;
+            html += reports.map(r => createReportCard(r)).join('');
+            html += '</div>';
+        }
+        reportsList.innerHTML = html;
+
+        // 绑定点击
+        reportsList.querySelectorAll('.report-card[data-id]').forEach(card => {
+            card.addEventListener('click', () => openReport(parseInt(card.dataset.id)));
+        });
+    } catch (err) {
+        reportsList.innerHTML = `<div class="activity-empty">加载失败：${escapeHtml(err.message)}</div>`;
+    } finally {
+        reportsLoading.classList.add('hidden');
+    }
+}
+
+function createReportCard(report) {
+    const typeLabel = escapeHtml(REPORT_TYPE_LABEL[report.report_type] || report.report_type);
+    const start = escapeHtml(String(report.period_start).split('T')[0]);
+    const end = escapeHtml(String(report.period_end).split('T')[0]);
+    const statusLabel = escapeHtml(STATUS_LABEL[report.status] || report.status);
+    const statusClass = STATUS_CLASS[report.status] || '';
+    const generatedAt = report.generated_at
+        ? new Date(report.generated_at).toLocaleString('zh-CN')
+        : '';
+    const clickable = report.status === 'done' ? `data-id="${report.id}"` : '';
+    const cursor = report.status === 'done' ? 'style="cursor:pointer"' : '';
+
+    return `
+        <div class="report-card" ${clickable} ${cursor}>
+            <div class="report-card-header">
+                <span class="report-type-badge">${typeLabel}</span>
+                <span class="report-period">${start} ~ ${end}</span>
+                <span class="report-status ${statusClass}">${statusLabel}</span>
+            </div>
+            ${generatedAt ? `<div class="report-meta">生成于 ${escapeHtml(generatedAt)}</div>` : ''}
+        </div>
+    `;
+}
+
+async function openReport(id) {
+    reportsList.classList.add('hidden');
+    reportDetail.classList.remove('hidden');
+    reportDetailContent.innerHTML = '<div class="loading"><div class="spinner"></div><p>加载中...</p></div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/api/reports/${id}`);
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error);
+
+        const r = result.data;
+        const stats = r.stats_json || {};
+        const start = String(r.period_start).split('T')[0];
+        const end = String(r.period_end).split('T')[0];
+        const typeLabel = REPORT_TYPE_LABEL[r.report_type] || r.report_type;
+
+        const topReposHtml = (stats.top_repos || []).map((repo, i) => {
+            const desc = repo.description ? ` data-tooltip="${escapeAttr(repo.description)}"` : '';
+            return `
+            <tr>
+                <td>${i + 1}</td>
+                <td><a href="https://github.com/${escapeAttr(repo.author)}/${escapeAttr(repo.name)}" target="_blank" rel="noopener" class="repo-link"${desc}>${escapeHtml(repo.author)}/${escapeHtml(repo.name)}</a></td>
+                <td>${escapeHtml(repo.language || '-')}</td>
+                <td>${repo.appearances}</td>
+                <td>${repo.peak_rank}</td>
+                <td>+${repo.avg_period_stars.toLocaleString()}</td>
+            </tr>
+        `;
+        }).join('');
+
+        const langHtml = (stats.language_distribution || []).map(l => {
+            const pct = Math.round(l.pct);
+            return `
+                <div class="lang-bar-row">
+                    <span class="lang-name">${escapeHtml(l.language)}</span>
+                    <div class="lang-bar-track"><div class="lang-bar-fill" style="width:${Math.min(pct * 2, 100)}%"></div></div>
+                    <span class="lang-pct">${l.pct}%</span>
+                </div>
+            `;
+        }).join('');
+
+        const mdHtml = r.content_md
+            ? (typeof marked !== 'undefined' ? marked.parse(r.content_md) : `<pre>${escapeHtml(r.content_md)}</pre>`)
+            : '<p>暂无分析内容</p>';
+
+        reportDetailContent.innerHTML = `
+            <div class="report-detail-header">
+                <h2>${escapeHtml(typeLabel)}：${escapeHtml(start)} ~ ${escapeHtml(end)}</h2>
+                <div class="report-summary-stats">
+                    <span>上榜次数 <strong>${stats.total_appearances || 0}</strong></span>
+                    <span>独立项目 <strong>${stats.unique_repos || 0}</strong></span>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h3>Top 项目</h3>
+                <div class="report-table-wrap">
+                    <table class="report-table">
+                        <thead><tr><th>#</th><th>项目</th><th>语言</th><th>上榜次数</th><th>最高排名</th><th>平均新增 Stars</th></tr></thead>
+                        <tbody>${topReposHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h3>语言分布</h3>
+                <div class="lang-bars">${langHtml}</div>
+            </div>
+
+            <div class="report-section report-markdown">
+                <h3>AI 分析</h3>
+                <div class="markdown-body">${mdHtml}</div>
+            </div>
+        `;
+    } catch (err) {
+        reportDetailContent.innerHTML = `<div class="activity-empty">加载失败：${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function showReportList() {
+    reportDetail.classList.add('hidden');
+    reportsList.classList.remove('hidden');
+}
+
+// ─── Repo link tooltip ───────────────────────────────────────────────────────
+
+const tooltip = document.createElement('div');
+tooltip.id = 'repo-tooltip';
+document.body.appendChild(tooltip);
+
+document.addEventListener('mouseover', e => {
+    const link = e.target.closest('.repo-link[data-tooltip]');
+    if (!link) return;
+    tooltip.textContent = link.dataset.tooltip;
+    tooltip.style.opacity = '0';
+    tooltip.style.display = 'block';
+
+    const rect = link.getBoundingClientRect();
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+    const margin = 8;
+
+    // 默认在元素上方居中
+    let left = rect.left + rect.width / 2 - tw / 2;
+    let top = rect.top - th - margin;
+
+    // 右侧溢出修正
+    if (left + tw > window.innerWidth - margin) left = window.innerWidth - tw - margin;
+    // 左侧溢出修正
+    if (left < margin) left = margin;
+    // 上方空间不够时改为下方
+    if (top < margin) top = rect.bottom + margin;
+
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+    tooltip.style.opacity = '1';
+});
+
+document.addEventListener('mouseout', e => {
+    if (e.target.closest('.repo-link[data-tooltip]')) tooltip.style.opacity = '0';
+});

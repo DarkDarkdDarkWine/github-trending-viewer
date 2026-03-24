@@ -459,6 +459,283 @@ select:focus {
     color: var(--text-secondary);
 }
 
+/* ─── 趋势报告 ─────────────────────────────────────────────────── */
+
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.2rem;
+    margin-bottom: 1.5rem;
+    background: transparent;
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.back-btn:hover {
+    background: rgba(9, 105, 218, 0.1);
+}
+
+.report-group {
+    margin-bottom: 2rem;
+}
+
+.report-group-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.report-card {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s;
+}
+
+.report-card[data-id]:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.12);
+}
+
+.report-card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.report-type-badge {
+    padding: 0.2rem 0.6rem;
+    background: rgba(9, 105, 218, 0.15);
+    color: var(--primary-color);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.report-period {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.report-status {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 10px;
+}
+
+.status-done { background: rgba(63, 185, 80, 0.15); color: var(--success-color); }
+.status-pending { background: rgba(210, 153, 34, 0.15); color: var(--warning-color); }
+.status-failed { background: rgba(248, 81, 73, 0.15); color: var(--danger-color); }
+
+.report-meta {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* 报告详情 */
+.report-detail-header {
+    margin-bottom: 2rem;
+}
+
+.report-detail-header h2 {
+    font-size: 1.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.report-summary-stats {
+    display: flex;
+    gap: 2rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.report-summary-stats strong {
+    color: var(--primary-color);
+}
+
+.report-section {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.report-section h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.report-table-wrap {
+    overflow-x: auto;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.report-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.report-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+    color: var(--text-primary);
+}
+
+.report-table td a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.report-table td a:hover {
+    text-decoration: underline;
+}
+
+.report-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* 语言分布条 */
+.lang-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.lang-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.lang-name {
+    width: 100px;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.lang-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.lang-bar-fill {
+    height: 100%;
+    background: var(--primary-color);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.lang-pct {
+    width: 42px;
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* Markdown 正文 */
+.markdown-body {
+    color: var(--text-primary);
+    line-height: 1.75;
+    font-size: 0.95rem;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    margin: 1.5rem 0 0.75rem;
+    color: var(--text-primary);
+}
+
+.markdown-body p { margin-bottom: 1rem; }
+
+.markdown-body ul, .markdown-body ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.markdown-body li { margin-bottom: 0.3rem; }
+
+.markdown-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    overflow-x: auto;
+    display: block;
+}
+
+.markdown-body th {
+    padding: 0.5rem 0.75rem;
+    background: rgba(48, 54, 61, 0.5);
+    border: 1px solid var(--border-color);
+    text-align: left;
+    font-weight: 600;
+}
+
+.markdown-body td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+}
+
+/* Repo link tooltip — rendered via JS into body, no clipping */
+#repo-tooltip {
+    position: fixed;
+    background: #1c2128;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    width: 280px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 9999;
+}
+
+.markdown-body strong { color: var(--text-primary); font-weight: 700; }
+.markdown-body code {
+    background: rgba(48, 54, 61, 0.7);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.875em;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 1rem;

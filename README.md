@@ -1,6 +1,6 @@
-# GitHub Trending Viewer v1.2.0
+# GitHub Trending Viewer v1.3.0
 
-一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译和个人 Star 仓库动态监控。
+一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、个人 Star 仓库动态监控和自动报告生成。
 
 ## ✨ 功能特性
 
@@ -25,6 +25,12 @@
 - **仓库更新监控** - 追踪你 Star 的仓库的最新 Release 和提交
 - **时间线展示** - 按时间排序的活动流
 - **过滤噪音** - 自动过滤 "谁 Star 了" 等不相关事件
+
+### 📈 自动报告生成（新）
+- **周报自动生成** - 每周一自动生成上周 GitHub Trending 分析报告
+- **月报自动生成** - 每月1日自动生成上月分析报告
+- **深度 AI 分析** - 使用 DeepSeek 分析技术趋势、热点成因和社区注意力变化
+- **数据可视化** - 展示 Top 项目、语言分布、每日上榜数量等统计数据
 
 ## 🚀 快速开始
 
@@ -121,12 +127,37 @@ Body: { "repos": [{ "owner": "user", "name": "repo" }] }
 GET /api/starred-activity
 ```
 
+### 获取分析报告列表
+
+```
+GET /api/reports
+```
+
+返回所有已生成的报告列表，按时间倒序。
+
+### 获取单份报告详情
+
+```
+GET /api/reports/:id
+```
+
+返回报告的完整内容，包括 Markdown 分析文本和统计数据。
+
+### 手动触发报告生成
+
+```
+POST /api/reports/generate
+```
+
+手动触发检查并生成应生成的报告（周报/月报）。
+
 ## 🏗️ 项目结构
 
 ```
 github-trending-viewer/
 ├── server.js              # Express 后端服务
 ├── db.js                  # PostgreSQL 数据库模块
+├── analyzer.js            # 报告生成模块（周报/月报）
 ├── package.json           # 项目依赖
 ├── docker-compose.yml     # Docker 配置
 ├── .env.example          # 环境变量示例
@@ -147,6 +178,13 @@ github-trending-viewer/
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.3.0 (2026-03-24)
+- 📈 新增自动报告生成功能：周一自动生成上周周报，每月1日生成上月月报
+- 🤖 报告内容由 DeepSeek AI 深度分析，包含技术趋势解读和社区注意力变化
+- 📊 新增报告查看页面，展示 Top 项目、语言分布、每日上榜统计
+- 🔌 新增 `/api/reports` 相关 API 端点
+- 📁 数据库新增 `reports` 表存储报告内容
 
 ### v1.2.0 (2026-03-18)
 - 🗑️ 移除语言筛选功能，简化前后端复杂度

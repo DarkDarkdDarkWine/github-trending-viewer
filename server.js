@@ -5,6 +5,8 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
+const db = require('./db');
+const { runScheduledReports } = require('./analyzer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -454,9 +456,42 @@ app.post('/api/translate', async (req, res) => {
   res.end();
 });
 
-app.listen(PORT, () => {
+// 触发今日应生成的报告（cron 调用：每周一 + 每月1日）
+app.get('/api/generate-reports', async (req, res) => {
+  try {
+    const result = await runScheduledReports();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error generating reports:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 列出所有报告（不含正文）
+app.get('/api/reports', async (req, res) => {
+  try {
+    const reports = await db.listReports();
+    res.json({ success: true, data: reports });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 获取单份报告详情（含正文和 stats）
+app.get('/api/reports/:id', async (req, res) => {
+  try {
+    const report = await db.getReport(parseInt(req.params.id));
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+    res.json({ success: true, data: report });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   if (!GITHUB_TOKEN) {
     console.warn('⚠️  GITHUB_TOKEN not set. Star status checking will be disabled.');
   }
+  await db.ensureReportsSchema();
 });
