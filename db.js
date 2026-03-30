@@ -65,7 +65,7 @@ async function saveTrendingData(repos, since) {
         const base = i * 10;
         params.push(
           recordId,
-          repo.rank,
+          i + 1,
           repo.author,
           repo.name,
           repo.description || null,

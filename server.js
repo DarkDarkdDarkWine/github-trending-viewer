@@ -282,6 +282,10 @@ app.get('/api/trending', async (req, res) => {
       console.error('Failed to update ranking history:', err);
     });
 
+    db.saveTrendingData(repos, since).catch(err => {
+      console.error('Failed to save trending data to DB:', err);
+    });
+
     res.json({
       success: true,
       data: reposWithChanges,
