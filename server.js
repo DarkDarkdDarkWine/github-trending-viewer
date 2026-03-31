@@ -500,9 +500,33 @@ app.delete('/api/ai-providers/:id', async (req, res) => {
 // 测试供应商连通性
 app.post('/api/ai-providers/test', async (req, res) => {
   try {
+    const { id, apiKey, model } = req.body;
+    if (!id) return res.status(400).json({ success: false, error: 'id required' });
+    const result = await aiProvider.testProvider(id, apiKey, model);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 拉取供应商可用模型列表
+app.post('/api/ai-providers/models', async (req, res) => {
+  try {
     const { id, apiKey } = req.body;
     if (!id) return res.status(400).json({ success: false, error: 'id required' });
-    const result = await aiProvider.testProvider(id, apiKey);
+    const models = await aiProvider.fetchModels(id, apiKey);
+    res.json({ success: true, data: models });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 更新供应商模型选择
+app.put('/api/ai-providers/:id/models', async (req, res) => {
+  try {
+    const { selectedModels } = req.body;
+    if (!selectedModels) return res.status(400).json({ success: false, error: 'selectedModels required' });
+    const result = await aiProvider.updateModels(req.params.id, selectedModels);
     res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

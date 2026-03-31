@@ -603,12 +603,7 @@ function showReportList() {
 // ─── AI 设置 ────────────────────────────────────────────────────────────────
 
 const FEATURE_LABELS = { translate: '翻译', report: '报告', web_search: '联网搜索' };
-const STATUS_TEXTS = {
-    connected: '已连接',
-    error: '连接失败',
-    untested: '待测试',
-    unconfigured: '未配置'
-};
+const STATUS_TEXTS = { connected: '已连接', error: '连接失败', untested: '待测试', unconfigured: '未配置' };
 
 async function loadProviders() {
     const container = document.getElementById('providers-list');
@@ -627,19 +622,49 @@ async function loadProviders() {
 }
 
 function createProviderCard(provider) {
-    const features = provider.features.map(f => {
+    const features = provider.features.filter(f => f !== 'web_search').map(f => {
         const active = provider.configured ? ' active' : '';
         return `<span class="feature-tag${active}">${escapeHtml(FEATURE_LABELS[f] || f)}</span>`;
     }).join('');
 
+    const webSearchTag = provider.features.includes('web_search')
+        ? `<span class="feature-tag${provider.configured ? ' web-search' : ''}">${FEATURE_LABELS.web_search}</span>` : '';
+
     const statusText = STATUS_TEXTS[provider.status] || provider.status;
-    const statusDot = provider.status === 'unconfigured' ? 'unconfigured'
-        : provider.status === 'connected' ? 'connected'
-        : provider.status === 'error' ? 'error' : 'untested';
+    const statusDot = provider.status === 'connected' ? 'connected'
+        : provider.status === 'error' ? 'error'
+        : provider.status === 'untested' ? 'untested' : 'unconfigured';
 
     const latencyInfo = provider.lastTested && provider.status === 'connected'
-        ? `<span class="provider-latency">${new Date(provider.lastTested).toLocaleString('zh-CN')}</span>`
-        : '';
+        ? `<span class="provider-latency">${new Date(provider.lastTested).toLocaleString('zh-CN')}</span>` : '';
+
+    // 模型选择区域（仅已配置的供应商显示）
+    const models = provider.selectedModels || provider.defaultModels;
+    const cached = provider.cachedModels;
+    const modelSection = provider.configured ? `
+        <div class="model-selection">
+            <div class="model-row">
+                <label>翻译模型</label>
+                <div class="model-select-wrap">
+                    <select data-model-select="${escapeAttr(provider.id)}" data-role="translate">
+                        ${buildModelOptions(cached, models.translate, provider.defaultModels.translate)}
+                    </select>
+                </div>
+            </div>
+            <div class="model-row">
+                <label>报告模型</label>
+                <div class="model-select-wrap">
+                    <select data-model-select="${escapeAttr(provider.id)}" data-role="report">
+                        ${buildModelOptions(cached, models.report, provider.defaultModels.report)}
+                    </select>
+                </div>
+            </div>
+            <div class="model-actions">
+                <button class="btn-sm btn-fetch-models" data-action="fetch-models" data-id="${escapeAttr(provider.id)}">刷新模型列表</button>
+                <button class="btn-sm btn-save-models" data-action="save-models" data-id="${escapeAttr(provider.id)}">保存模型选择</button>
+            </div>
+        </div>
+    ` : '';
 
     return `
         <div class="provider-card" data-provider-id="${escapeAttr(provider.id)}">
@@ -649,17 +674,35 @@ function createProviderCard(provider) {
                     <span class="status-dot ${statusDot}"></span>
                     ${escapeHtml(statusText)}${latencyInfo}
                 </span>
-                <div class="provider-features">${features}</div>
+                <div class="provider-features">${features}${webSearchTag}</div>
             </div>
             <div class="provider-form">
                 <input type="password" placeholder="输入 API Key..." data-key-input="${escapeAttr(provider.id)}" autocomplete="off">
-                <button class="btn-sm btn-test" data-action="test" data-id="${escapeAttr(provider.id)}">测试</button>
+                <button class="btn-sm btn-test" data-action="test" data-id="${escapeAttr(provider.id)}">测试连通</button>
                 <button class="btn-sm btn-save" data-action="save" data-id="${escapeAttr(provider.id)}">保存</button>
                 ${provider.configured ? `<button class="btn-sm btn-remove" data-action="remove" data-id="${escapeAttr(provider.id)}">删除</button>` : ''}
             </div>
             <div class="provider-test-result" data-result="${escapeAttr(provider.id)}"></div>
+            ${modelSection}
         </div>
     `;
+}
+
+function buildModelOptions(cachedModels, selectedId, defaultId) {
+    if (!cachedModels || cachedModels.length === 0) {
+        // 没有缓存的模型列表，只显示当前选中的（可编辑）
+        return `<option value="${escapeAttr(selectedId)}" selected>${escapeHtml(selectedId)}</option>`;
+    }
+    let opts = cachedModels.map(m => {
+        const sel = m.id === selectedId ? ' selected' : '';
+        const label = m.id === defaultId ? `${m.id} (默认)` : m.id;
+        return `<option value="${escapeAttr(m.id)}"${sel}>${escapeHtml(label)}</option>`;
+    }).join('');
+    // 如果选中的不在列表中，加到前面
+    if (selectedId && !cachedModels.find(m => m.id === selectedId)) {
+        opts = `<option value="${escapeAttr(selectedId)}" selected>${escapeHtml(selectedId)} (自定义)</option>` + opts;
+    }
+    return opts;
 }
 
 function bindProviderEvents() {
@@ -667,19 +710,16 @@ function bindProviderEvents() {
         btn.addEventListener('click', async () => {
             const action = btn.dataset.action;
             const id = btn.dataset.id;
-            const input = document.querySelector(`[data-key-input="${id}"]`);
-            const resultEl = document.querySelector(`[data-result="${id}"]`);
+            const card = btn.closest('.provider-card');
+            const input = card.querySelector(`[data-key-input="${id}"]`);
+            const resultEl = card.querySelector(`[data-result="${id}"]`);
 
             if (action === 'test') {
                 const apiKey = input.value.trim();
-                if (!apiKey) {
-                    showTestResult(resultEl, 'error', '请输入 API Key');
-                    return;
-                }
+                if (!apiKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
                 btn.disabled = true;
                 btn.textContent = '测试中...';
                 showTestResult(resultEl, 'testing', '正在连接...');
-
                 try {
                     const res = await fetch(`${API_BASE}/api/ai-providers/test`, {
                         method: 'POST',
@@ -691,25 +731,22 @@ function bindProviderEvents() {
                         showTestResult(resultEl, 'success',
                             `连接成功 · 模型: ${result.data.model} · 延迟: ${result.data.latency}ms · 回复: "${result.data.reply}"`);
                     } else {
-                        showTestResult(resultEl, 'error',
-                            `连接失败: ${result.data?.error || result.error}`);
+                        showTestResult(resultEl, 'error', `连接失败: ${result.data?.error || result.error}`);
                     }
                 } catch (err) {
                     showTestResult(resultEl, 'error', `请求失败: ${err.message}`);
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = '测试';
+                    btn.textContent = '测试连通';
                 }
             }
 
             if (action === 'save') {
                 const apiKey = input.value.trim();
-                if (!apiKey) {
-                    showTestResult(resultEl, 'error', '请输入 API Key');
-                    return;
-                }
+                if (!apiKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
                 btn.disabled = true;
                 try {
+                    // 先保存 key
                     const res = await fetch(`${API_BASE}/api/ai-providers`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -717,8 +754,26 @@ function bindProviderEvents() {
                     });
                     const result = await res.json();
                     if (result.success) {
-                        showTestResult(resultEl, 'success', '已保存');
-                        setTimeout(() => loadProviders(), 800);
+                        // 自动测试连通
+                        showTestResult(resultEl, 'testing', '已保存，正在测试连通...');
+                        const testRes = await fetch(`${API_BASE}/api/ai-providers/test`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id, apiKey })
+                        });
+                        const testResult = await testRes.json();
+                        if (testResult.success && testResult.data.success) {
+                            showTestResult(resultEl, 'success', `已保存并连接成功 · 延迟: ${testResult.data.latency}ms`);
+                            // 自动拉取模型列表
+                            fetch(`${API_BASE}/api/ai-providers/models`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id, apiKey })
+                            }).finally(() => setTimeout(() => loadProviders(), 600));
+                        } else {
+                            showTestResult(resultEl, 'error', `已保存但连接失败: ${testResult.data?.error || ''}`);
+                            setTimeout(() => loadProviders(), 800);
+                        }
                     } else {
                         showTestResult(resultEl, 'error', result.error);
                     }
@@ -736,6 +791,65 @@ function bindProviderEvents() {
                     loadProviders();
                 } catch (err) {
                     showTestResult(resultEl, 'error', err.message);
+                }
+            }
+
+            if (action === 'fetch-models') {
+                btn.disabled = true;
+                btn.textContent = '拉取中...';
+                try {
+                    const apiKey = input?.value.trim() || undefined;
+                    const res = await fetch(`${API_BASE}/api/ai-providers/models`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, apiKey })
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        // 更新下拉列表
+                        card.querySelectorAll(`[data-model-select="${id}"]`).forEach(sel => {
+                            const role = sel.dataset.role;
+                            const currentVal = sel.value;
+                            const preset = result.data;
+                            sel.innerHTML = buildModelOptions(preset, currentVal, currentVal);
+                        });
+                        showTestResult(resultEl, 'success', `获取到 ${result.data.length} 个模型`);
+                        setTimeout(() => loadProviders(), 500);
+                    } else {
+                        showTestResult(resultEl, 'error', result.error);
+                    }
+                } catch (err) {
+                    showTestResult(resultEl, 'error', err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '刷新模型列表';
+                }
+            }
+
+            if (action === 'save-models') {
+                const translateSel = card.querySelector(`[data-model-select="${id}"][data-role="translate"]`);
+                const reportSel = card.querySelector(`[data-model-select="${id}"][data-role="report"]`);
+                const selectedModels = {
+                    translate: translateSel.value,
+                    report: reportSel.value
+                };
+                btn.disabled = true;
+                try {
+                    const res = await fetch(`${API_BASE}/api/ai-providers/${id}/models`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ selectedModels })
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        showTestResult(resultEl, 'success', `模型已保存 · 翻译: ${selectedModels.translate} · 报告: ${selectedModels.report}`);
+                    } else {
+                        showTestResult(resultEl, 'error', result.error);
+                    }
+                } catch (err) {
+                    showTestResult(resultEl, 'error', err.message);
+                } finally {
+                    btn.disabled = false;
                 }
             }
         });
