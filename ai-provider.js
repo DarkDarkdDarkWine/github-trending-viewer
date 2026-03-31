@@ -8,6 +8,10 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const CONFIG_FILE = path.join(__dirname, 'data', 'ai-providers.json');
+const TASK_FILE = path.join(__dirname, 'data', 'ai-task-assign.json');
+
+// 任务分配缓存：{ translate: 'deepseek', report: 'glm' }
+let taskAssign = null;
 
 // 预设供应商定义
 const PROVIDER_PRESETS = {
@@ -95,6 +99,32 @@ async function loadProviders() {
 async function saveProviders() {
   await ensureDataDir();
   await fs.writeFile(CONFIG_FILE, JSON.stringify(configuredProviders, null, 2));
+}
+
+async function loadTaskAssign() {
+  if (taskAssign) return taskAssign;
+  try {
+    const data = await fs.readFile(TASK_FILE, 'utf8');
+    taskAssign = JSON.parse(data);
+  } catch {
+    taskAssign = {};
+  }
+  return taskAssign;
+}
+
+async function saveTaskAssign() {
+  await ensureDataDir();
+  await fs.writeFile(TASK_FILE, JSON.stringify(taskAssign, null, 2));
+}
+
+async function getTaskAssign() {
+  return loadTaskAssign();
+}
+
+async function updateTaskAssign(assign) {
+  taskAssign = { ...await loadTaskAssign(), ...assign };
+  await saveTaskAssign();
+  return taskAssign;
 }
 
 // 获取所有预设供应商（含已配置状态和用户选择的模型）
@@ -247,25 +277,35 @@ async function testProvider(id, apiKey, testModel) {
 // 获取某个功能对应的 provider + 模型
 async function getProviderForFeature(feature) {
   const providers = await loadProviders();
-  // 优先选择 status=connected 的
-  for (const p of providers) {
-    const preset = PROVIDER_PRESETS[p.id];
-    if (preset && preset.features.includes(feature) && p.status === 'connected') {
+  const assign = await loadTaskAssign();
+  const assignedId = assign[feature];
+
+  // 找到一个满足条件的 provider
+  function pick(list) {
+    for (const p of list) {
+      const preset = PROVIDER_PRESETS[p.id];
+      if (!preset || !preset.features.includes(feature) || !p.apiKey) continue;
       const modelId = p.selectedModels?.[feature] || preset.defaultModels[feature];
       const webSearch = preset.webSearchModels.includes(modelId);
       return { preset, apiKey: p.apiKey, model: modelId, webSearch };
     }
+    return null;
   }
-  // 退而选择任何有 key 的
-  for (const p of providers) {
-    const preset = PROVIDER_PRESETS[p.id];
-    if (preset && preset.features.includes(feature) && p.apiKey) {
-      const modelId = p.selectedModels?.[feature] || preset.defaultModels[feature];
-      const webSearch = preset.webSearchModels.includes(modelId);
-      return { preset, apiKey: p.apiKey, model: modelId, webSearch };
-    }
+
+  // 1. 优先用户指定的供应商（已连接）
+  if (assignedId) {
+    const assigned = providers.filter(p => p.id === assignedId && p.status === 'connected');
+    const result = pick(assigned);
+    if (result) return result;
   }
-  return null;
+
+  // 2. 任何已连接的
+  const connected = providers.filter(p => p.status === 'connected');
+  const result = pick(connected);
+  if (result) return result;
+
+  // 3. 降级：任何有 key 的（含未测试）
+  return pick(providers);
 }
 
 // 调用 AI 进行翻译（单条）
@@ -375,6 +415,8 @@ async function generateReport(stats, reportType) {
 module.exports = {
   PROVIDER_PRESETS,
   getPresets,
+  getTaskAssign,
+  updateTaskAssign,
   upsertProvider,
   updateModels,
   removeProvider,

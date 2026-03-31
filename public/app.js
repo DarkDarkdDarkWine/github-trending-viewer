@@ -610,16 +610,64 @@ async function loadProviders() {
     container.innerHTML = '<div class="loading"><div class="spinner"></div><p>加载中...</p></div>';
 
     try {
-        const res = await fetch(`${API_BASE}/api/ai-providers`);
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error);
+        const [providersRes, assignRes] = await Promise.all([
+            fetch(`${API_BASE}/api/ai-providers`).then(r => r.json()),
+            fetch(`${API_BASE}/api/ai-providers/task-assign`).then(r => r.json()),
+        ]);
+        if (!providersRes.success) throw new Error(providersRes.error);
 
-        container.innerHTML = result.data.map(p => createProviderCard(p)).join('');
+        const providers = providersRes.data;
+        const assign = assignRes.success ? assignRes.data : {};
+
+        // 填充任务分配下拉框
+        const configuredProviders = providers.filter(p => p.configured);
+        ['translate', 'report'].forEach(task => {
+            const sel = document.getElementById(`assign-${task}`);
+            if (!sel) return;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">自动选择</option>' +
+                configuredProviders.map(p =>
+                    `<option value="${escapeAttr(p.id)}"${assign[task] === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+                ).join('');
+            if (!assign[task]) sel.value = '';
+        });
+
+        container.innerHTML = providers.map(p => createProviderCard(p)).join('');
         bindProviderEvents();
     } catch (err) {
         container.innerHTML = `<div class="activity-empty">加载失败：${escapeHtml(err.message)}</div>`;
     }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('saveTaskAssign')?.addEventListener('click', async () => {
+        const btn = document.getElementById('saveTaskAssign');
+        const resultEl = document.getElementById('task-assign-result');
+        btn.disabled = true;
+        try {
+            const assign = {
+                translate: document.getElementById('assign-translate').value || null,
+                report: document.getElementById('assign-report').value || null,
+            };
+            const res = await fetch(`${API_BASE}/api/ai-providers/task-assign`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(assign),
+            });
+            const result = await res.json();
+            if (result.success) {
+                showTestResult(resultEl, 'success',
+                    `已保存 · 翻译: ${assign.translate || '自动'} · 报告: ${assign.report || '自动'}`);
+            } else {
+                showTestResult(resultEl, 'error', result.error);
+            }
+        } catch (err) {
+            showTestResult(resultEl, 'error', err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+});
 
 function createProviderCard(provider) {
     const features = provider.features.filter(f => f !== 'web_search').map(f => {

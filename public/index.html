@@ -73,6 +73,21 @@
                     <h2 class="settings-title">AI API 供应商配置</h2>
                     <p class="settings-desc">配置用于翻译和报告生成的 AI API</p>
                 </div>
+                <div id="task-assign-section" class="task-assign-section">
+                    <h3 class="task-assign-title">任务分配</h3>
+                    <div class="task-assign-rows">
+                        <div class="task-assign-row">
+                            <label>翻译</label>
+                            <select id="assign-translate"><option value="">自动选择</option></select>
+                        </div>
+                        <div class="task-assign-row">
+                            <label>报告生成</label>
+                            <select id="assign-report"><option value="">自动选择</option></select>
+                        </div>
+                        <button class="btn-sm btn-save-assign" id="saveTaskAssign">保存分配</button>
+                    </div>
+                    <div id="task-assign-result" class="provider-test-result"></div>
+                </div>
                 <div id="providers-list" class="providers-list"></div>
             </div>
         </div>

@@ -756,6 +756,56 @@ select:focus {
     font-size: 0.9rem;
 }
 
+.task-assign-section {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.task-assign-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+}
+
+.task-assign-rows {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.task-assign-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.task-assign-row label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.task-assign-row select {
+    min-width: 180px;
+}
+
+.btn-save-assign {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-save-assign:hover {
+    opacity: 0.85;
+}
+
 .provider-card {
     background: var(--card-background);
     border: 1px solid var(--border-color);

@@ -521,6 +521,25 @@ app.post('/api/ai-providers/models', async (req, res) => {
   }
 });
 
+// 获取/更新任务分配
+app.get('/api/ai-providers/task-assign', async (req, res) => {
+  try {
+    const assign = await aiProvider.getTaskAssign();
+    res.json({ success: true, data: assign });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/ai-providers/task-assign', async (req, res) => {
+  try {
+    const result = await aiProvider.updateTaskAssign(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 更新供应商模型选择
 app.put('/api/ai-providers/:id/models', async (req, res) => {
   try {
