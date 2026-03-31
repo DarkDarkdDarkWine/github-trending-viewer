@@ -13,6 +13,7 @@ RUN npm install --production
 COPY server.js ./
 COPY db.js ./
 COPY analyzer.js ./
+COPY ai-provider.js ./
 COPY public ./public
 
 # Expose port
