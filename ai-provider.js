@@ -109,6 +109,7 @@ async function getPresets() {
       lastTested: configured ? configured.lastTested : null,
       selectedModels: configured?.selectedModels || preset.defaultModels,
       cachedModels: configured?.cachedModels || null,
+      apiKey: configured?.apiKey || '',
     };
   });
 }

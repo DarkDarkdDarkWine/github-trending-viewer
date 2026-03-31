@@ -677,7 +677,10 @@ function createProviderCard(provider) {
                 <div class="provider-features">${features}${webSearchTag}</div>
             </div>
             <div class="provider-form">
-                <input type="password" placeholder="输入 API Key..." data-key-input="${escapeAttr(provider.id)}" autocomplete="off">
+                <div class="key-input-wrap">
+                    <input type="password" placeholder="输入 API Key..." data-key-input="${escapeAttr(provider.id)}" value="${escapeAttr(provider.apiKey)}" autocomplete="off">
+                    <button class="btn-toggle-key" data-action="toggle-key" data-id="${escapeAttr(provider.id)}" title="显示/隐藏">👁</button>
+                </div>
                 <button class="btn-sm btn-test" data-action="test" data-id="${escapeAttr(provider.id)}">测试连通</button>
                 <button class="btn-sm btn-save" data-action="save" data-id="${escapeAttr(provider.id)}">保存</button>
                 ${provider.configured ? `<button class="btn-sm btn-remove" data-action="remove" data-id="${escapeAttr(provider.id)}">删除</button>` : ''}
@@ -713,6 +716,12 @@ function bindProviderEvents() {
             const card = btn.closest('.provider-card');
             const input = card.querySelector(`[data-key-input="${id}"]`);
             const resultEl = card.querySelector(`[data-result="${id}"]`);
+
+            if (action === 'toggle-key') {
+                const inp = card.querySelector(`[data-key-input="${id}"]`);
+                inp.type = inp.type === 'password' ? 'text' : 'password';
+                return;
+            }
 
             if (action === 'test') {
                 const apiKey = input.value.trim();

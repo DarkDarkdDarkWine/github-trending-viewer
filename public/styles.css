@@ -828,9 +828,15 @@ select:focus {
     margin-top: 0.5rem;
 }
 
-.provider-form input {
+.key-input-wrap {
     flex: 1;
-    padding: 0.5rem 0.75rem;
+    position: relative;
+    display: flex;
+}
+
+.key-input-wrap input {
+    width: 100%;
+    padding: 0.5rem 2.2rem 0.5rem 0.75rem;
     background: var(--background);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
@@ -839,13 +845,31 @@ select:focus {
     font-family: monospace;
 }
 
-.provider-form input:focus {
+.key-input-wrap input:focus {
     outline: none;
     border-color: var(--primary-color);
 }
 
-.provider-form input::placeholder {
+.key-input-wrap input::placeholder {
     color: var(--text-secondary);
+}
+
+.btn-toggle-key {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.3rem;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.btn-toggle-key:hover {
+    opacity: 1;
 }
 
 .btn-sm {
