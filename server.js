@@ -423,10 +423,10 @@ app.post('/api/translate', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  await Promise.all(texts.map(async ({ index, text }) => {
+  for (const { index, text } of texts) {
     const translation = await translateToChinese(text);
     res.write(`data: ${JSON.stringify({ index, translation })}\n\n`);
-  }));
+  }
 
   res.end();
 });
