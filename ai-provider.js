@@ -406,7 +406,7 @@ async function generateReport(stats, reportType) {
   const response = await axios.post(
     `${preset.baseUrl}${preset.chatPath}`,
     body,
-    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120000 }
+    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 300000 }
   );
 
   return response.data.choices[0].message.content.trim();
