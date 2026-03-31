@@ -18,6 +18,9 @@ tabBtns.forEach(btn => {
         if (tab === 'reports') {
             loadReports();
         }
+        if (tab === 'settings') {
+            loadProviders();
+        }
     });
 });
 
@@ -595,6 +598,153 @@ async function openReport(id) {
 function showReportList() {
     reportDetail.classList.add('hidden');
     reportsList.classList.remove('hidden');
+}
+
+// ─── AI 设置 ────────────────────────────────────────────────────────────────
+
+const FEATURE_LABELS = { translate: '翻译', report: '报告', web_search: '联网搜索' };
+const STATUS_TEXTS = {
+    connected: '已连接',
+    error: '连接失败',
+    untested: '待测试',
+    unconfigured: '未配置'
+};
+
+async function loadProviders() {
+    const container = document.getElementById('providers-list');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div><p>加载中...</p></div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/api/ai-providers`);
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error);
+
+        container.innerHTML = result.data.map(p => createProviderCard(p)).join('');
+        bindProviderEvents();
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty">加载失败：${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function createProviderCard(provider) {
+    const features = provider.features.map(f => {
+        const active = provider.configured ? ' active' : '';
+        return `<span class="feature-tag${active}">${escapeHtml(FEATURE_LABELS[f] || f)}</span>`;
+    }).join('');
+
+    const statusText = STATUS_TEXTS[provider.status] || provider.status;
+    const statusDot = provider.status === 'unconfigured' ? 'unconfigured'
+        : provider.status === 'connected' ? 'connected'
+        : provider.status === 'error' ? 'error' : 'untested';
+
+    const latencyInfo = provider.lastTested && provider.status === 'connected'
+        ? `<span class="provider-latency">${new Date(provider.lastTested).toLocaleString('zh-CN')}</span>`
+        : '';
+
+    return `
+        <div class="provider-card" data-provider-id="${escapeAttr(provider.id)}">
+            <div class="provider-card-header">
+                <span class="provider-name">${escapeHtml(provider.name)}</span>
+                <span class="provider-status">
+                    <span class="status-dot ${statusDot}"></span>
+                    ${escapeHtml(statusText)}${latencyInfo}
+                </span>
+                <div class="provider-features">${features}</div>
+            </div>
+            <div class="provider-form">
+                <input type="password" placeholder="输入 API Key..." data-key-input="${escapeAttr(provider.id)}" autocomplete="off">
+                <button class="btn-sm btn-test" data-action="test" data-id="${escapeAttr(provider.id)}">测试</button>
+                <button class="btn-sm btn-save" data-action="save" data-id="${escapeAttr(provider.id)}">保存</button>
+                ${provider.configured ? `<button class="btn-sm btn-remove" data-action="remove" data-id="${escapeAttr(provider.id)}">删除</button>` : ''}
+            </div>
+            <div class="provider-test-result" data-result="${escapeAttr(provider.id)}"></div>
+        </div>
+    `;
+}
+
+function bindProviderEvents() {
+    document.querySelectorAll('.provider-card .btn-sm').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            const input = document.querySelector(`[data-key-input="${id}"]`);
+            const resultEl = document.querySelector(`[data-result="${id}"]`);
+
+            if (action === 'test') {
+                const apiKey = input.value.trim();
+                if (!apiKey) {
+                    showTestResult(resultEl, 'error', '请输入 API Key');
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = '测试中...';
+                showTestResult(resultEl, 'testing', '正在连接...');
+
+                try {
+                    const res = await fetch(`${API_BASE}/api/ai-providers/test`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, apiKey })
+                    });
+                    const result = await res.json();
+                    if (result.success && result.data.success) {
+                        showTestResult(resultEl, 'success',
+                            `连接成功 · 模型: ${result.data.model} · 延迟: ${result.data.latency}ms · 回复: "${result.data.reply}"`);
+                    } else {
+                        showTestResult(resultEl, 'error',
+                            `连接失败: ${result.data?.error || result.error}`);
+                    }
+                } catch (err) {
+                    showTestResult(resultEl, 'error', `请求失败: ${err.message}`);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '测试';
+                }
+            }
+
+            if (action === 'save') {
+                const apiKey = input.value.trim();
+                if (!apiKey) {
+                    showTestResult(resultEl, 'error', '请输入 API Key');
+                    return;
+                }
+                btn.disabled = true;
+                try {
+                    const res = await fetch(`${API_BASE}/api/ai-providers`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, apiKey })
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        showTestResult(resultEl, 'success', '已保存');
+                        setTimeout(() => loadProviders(), 800);
+                    } else {
+                        showTestResult(resultEl, 'error', result.error);
+                    }
+                } catch (err) {
+                    showTestResult(resultEl, 'error', err.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            if (action === 'remove') {
+                if (!confirm('确定要删除此供应商配置？')) return;
+                try {
+                    await fetch(`${API_BASE}/api/ai-providers/${id}`, { method: 'DELETE' });
+                    loadProviders();
+                } catch (err) {
+                    showTestResult(resultEl, 'error', err.message);
+                }
+            }
+        });
+    });
+}
+
+function showTestResult(el, type, message) {
+    el.className = `provider-test-result ${type}`;
+    el.textContent = message;
 }
 
 // ─── Repo link tooltip ───────────────────────────────────────────────────────

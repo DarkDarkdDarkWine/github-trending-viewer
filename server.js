@@ -7,6 +7,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const db = require('./db');
 const { runScheduledReports } = require('./analyzer');
+const aiProvider = require('./ai-provider');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -204,40 +205,10 @@ function parseNumber(str) {
   return Math.round(num * multiplier);
 }
 
-// Translate description to Chinese using DeepSeek AI
+// Translate description to Chinese using configured AI provider
 async function translateToChinese(text) {
   if (!text || text.length < 3) return text;
-  if (!process.env.DEEPSEEK_API_KEY) return text;
-
-  try {
-    const response = await axios.post(
-      'https://api.deepseek.com/chat/completions',
-      {
-        model: 'deepseek-chat',
-        max_tokens: 100,
-        messages: [
-          {
-            role: 'user',
-            content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}`
-          }
-        ]
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
-
-    if (response.data.choices && response.data.choices[0].message.content) {
-      return response.data.choices[0].message.content.trim();
-    }
-  } catch (error) {
-    console.warn('AI translation failed:', error.response?.data?.message || error.message);
-  }
-  return text;
+  return aiProvider.translate(text);
 }
 
 // Check if user starred a repository
@@ -487,6 +458,52 @@ app.get('/api/reports/:id', async (req, res) => {
     const report = await db.getReport(parseInt(req.params.id));
     if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
     res.json({ success: true, data: report });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── AI Provider 管理 API ────────────────────────────────────────────────────
+
+// 获取所有供应商（预设 + 配置状态）
+app.get('/api/ai-providers', async (req, res) => {
+  try {
+    const presets = await aiProvider.getPresets();
+    res.json({ success: true, data: presets });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 添加/更新供应商
+app.post('/api/ai-providers', async (req, res) => {
+  try {
+    const { id, apiKey } = req.body;
+    if (!id || !apiKey) return res.status(400).json({ success: false, error: 'id and apiKey required' });
+    const result = await aiProvider.upsertProvider(id, apiKey);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 删除供应商
+app.delete('/api/ai-providers/:id', async (req, res) => {
+  try {
+    await aiProvider.removeProvider(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 测试供应商连通性
+app.post('/api/ai-providers/test', async (req, res) => {
+  try {
+    const { id, apiKey } = req.body;
+    if (!id) return res.status(400).json({ success: false, error: 'id required' });
+    const result = await aiProvider.testProvider(id, apiKey);
+    res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

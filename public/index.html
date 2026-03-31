@@ -17,6 +17,7 @@
             <button class="tab-btn active" data-tab="trending">热门趋势</button>
             <button class="tab-btn" data-tab="starred">我的Star动态</button>
             <button class="tab-btn" data-tab="reports">趋势报告</button>
+            <button class="tab-btn" data-tab="settings">AI 设置</button>
         </nav>
 
         <div id="tab-trending" class="tab-content active">
@@ -64,6 +65,15 @@
             <div id="report-detail" class="hidden">
                 <button class="back-btn" id="reportBackBtn">← 返回列表</button>
                 <div id="report-detail-content"></div>
+            </div>
+        </div>
+        <div id="tab-settings" class="tab-content">
+            <div class="settings-container">
+                <div class="settings-header">
+                    <h2 class="settings-title">AI API 供应商配置</h2>
+                    <p class="settings-desc">配置用于翻译和报告生成的 AI API</p>
+                </div>
+                <div id="providers-list" class="providers-list"></div>
             </div>
         </div>
     </div>

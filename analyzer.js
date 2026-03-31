@@ -1,5 +1,6 @@
 const axios = require('axios');
 const db = require('./db');
+const aiProvider = require('./ai-provider');
 
 // 获取上海时区的当前日期字符串 (YYYY-MM-DD)
 function getShanghaiDateStr() {
@@ -146,85 +147,15 @@ async function computeStats(periodStart, periodEnd) {
   };
 }
 
-// 批量翻译描述（一次 API 调用，按编号返回）
+// 批量翻译描述（委托给 ai-provider 模块）
 async function translateDescriptions(texts) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey || texts.length === 0) return texts;
-
-  const numbered = texts.map((t, i) => `${i + 1}. ${t}`).join('\n');
-  try {
-    const response = await axios.post(
-      'https://api.deepseek.com/chat/completions',
-      {
-        model: 'deepseek-chat',
-        max_tokens: 800,
-        messages: [{
-          role: 'user',
-          content: `将以下英文按原编号翻译成中文，只返回"编号. 译文"格式，不要任何解释：\n${numbered}`
-        }]
-      },
-      {
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 30000
-      }
-    );
-    const raw = response.data.choices[0].message.content.trim();
-    const result = [...texts]; // fallback to originals
-    raw.split('\n').forEach(line => {
-      const m = line.match(/^(\d+)\.\s+(.+)/);
-      if (m) {
-        const idx = parseInt(m[1]) - 1;
-        if (idx >= 0 && idx < result.length) result[idx] = m[2].trim();
-      }
-    });
-    return result;
-  } catch (err) {
-    console.warn('Batch translation failed:', err.message);
-    return texts;
-  }
+  if (texts.length === 0) return texts;
+  return aiProvider.translateBatch(texts);
 }
 
-// 调用 DeepSeek 生成分析文本
-async function callDeepSeek(stats, reportType) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
-
-  const label = reportType === 'weekly' ? '周' : '月';
-  const statsText = [
-    `时间范围：${stats.period_start} 至 ${stats.period_end}`,
-    `总上榜次数：${stats.total_appearances}，独立项目数：${stats.unique_repos}`,
-    '',
-    'Top 15 最活跃项目：',
-    ...stats.top_repos.map((r, i) =>
-      `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）- 上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank} 名，平均新增 ${r.avg_period_stars} stars`
-    ),
-    '',
-    '编程语言分布（Top 5）：',
-    ...stats.language_distribution.slice(0, 5).map(l =>
-      `- ${l.language}: ${l.count} 次出现 (${l.pct}%)`
-    )
-  ].join('\n');
-
-  const response = await axios.post(
-    'https://api.deepseek.com/chat/completions',
-    {
-      model: 'deepseek-chat',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `你是一位开源技术趋势分析师。以下是 GitHub Trending ${label}报告（${stats.period_start} 至 ${stats.period_end}）的统计数据：\n\n${statsText}\n\n请撰写一份深度分析报告，要求：\n1. 结合近期技术圈背景（框架发布、公司动态、热点事件等）解释热点成因\n2. 分析社区注意力的变化方向和演进轨迹\n3. 用 Markdown 格式输出，可包含表格，不要包含代码块\n4. 报告结构：核心洞察（3-5条）→ 详细分析 → 趋势展望\n5. 语言：中文，专业但易读`
-      }]
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 120000
-    }
-  );
-
-  return response.data.choices[0].message.content.trim();
+// 生成分析报告（委托给 ai-provider 模块，支持联网搜索）
+async function callAI(stats, reportType) {
+  return aiProvider.generateReport(stats, reportType);
 }
 
 // 生成单份报告的完整流程
@@ -237,7 +168,7 @@ async function generateOneReport(report) {
       return { id: report.id, success: false, reason: 'no_data' };
     }
 
-    const contentMd = await callDeepSeek(stats, report.report_type);
+    const contentMd = await callAI(stats, report.report_type);
     await db.markReportDone(report.id, contentMd, stats);
     console.log(`Report ${report.id} done`);
     return { id: report.id, success: true };
