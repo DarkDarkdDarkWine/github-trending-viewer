@@ -203,7 +203,7 @@ describe('github-client: getStarredRepoActivityBatch', () => {
           nodes: [{
             tagName: 'v1.0.0',
             name: 'Release 1.0',
-            body: 'First release',
+            description: 'First release',
             publishedAt: '2026-04-14T00:00:00Z',
             createdAt: '2026-04-14T00:00:00Z',
             author: { login: 'dev', avatarUrl: 'https://avatar.dev' }
@@ -410,5 +410,126 @@ describe('github-client: cache', () => {
 
     // Different repos = different cache keys = 2 API calls
     expect(mockGraphql).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ─── getStarredDashboard ───────────────────────────────────────────────────
+
+describe('github-client: getStarredDashboard', () => {
+  beforeEach(() => {
+    process.env.GITHUB_TOKEN = 'ghp_test_token';
+  });
+
+  test('returns dashboard data with summary and sorted repos (releases first)', async () => {
+    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
+      data: Array.from({ length: 5 }, (_, i) => ({
+        owner: { login: 'owner' },
+        name: `repo${i}`,
+        full_name: `owner/repo${i}`,
+        description: `Repo ${i}`,
+        language: i % 2 === 0 ? 'TypeScript' : 'Python',
+        html_url: `https://github.com/owner/repo${i}`,
+        updated_at: `2026-04-${16 - i}T00:00:00Z`,
+        stargazers_count: 1000 + i * 100,
+        forks_count: 50 + i * 10
+      }))
+    });
+
+    mockGraphql.mockResolvedValue({
+      repo0: {
+        description: 'Repo 0',
+        stargazerCount: 1000,
+        forkCount: 50,
+        updatedAt: '2026-04-16T00:00:00Z',
+        releases: {
+          nodes: [{
+            tagName: 'v2.0.0',
+            name: 'Release 2.0',
+            description: 'Big update',
+            publishedAt: '2026-04-15T00:00:00Z'
+          }]
+        },
+        defaultBranchRef: {
+          target: {
+            history: {
+              nodes: [{
+                messageHeadline: 'fix: something',
+                oid: 'abc123def456',
+                authoredDate: '2026-04-16T10:00:00Z',
+                author: { user: { login: 'dev' }, name: 'Dev' }
+              }]
+            }
+          }
+        }
+      },
+      repo1: {
+        description: 'Repo 1',
+        stargazerCount: 1100,
+        forkCount: 60,
+        updatedAt: '2026-04-15T00:00:00Z',
+        releases: { nodes: [] },
+        defaultBranchRef: {
+          target: {
+            history: {
+              nodes: [{
+                messageHeadline: 'feat: add thing',
+                oid: 'def456abc789',
+                authoredDate: '2026-04-15T08:00:00Z',
+                author: { user: { login: 'dev2' }, name: 'Dev2' }
+              }]
+            }
+          }
+        }
+      }
+    });
+
+    const gc = require('../github-client');
+    const result = await gc.getStarredDashboard();
+
+    expect(result.summary).toBeDefined();
+    expect(result.summary.total_starred).toBe(5);
+    expect(result.summary.shown).toBe(5);
+    expect(result.summary.with_release).toBeGreaterThanOrEqual(1);
+
+    expect(result.repos.length).toBeGreaterThan(0);
+    const firstRepo = result.repos[0];
+    expect(firstRepo.latest_release).toBeDefined();
+    expect(firstRepo.latest_release.tag).toBe('v2.0.0');
+    expect(firstRepo.owner).toBe('owner');
+    expect(firstRepo.stars).toBeDefined();
+    expect(firstRepo.recent_commits).toBeInstanceOf(Array);
+  });
+
+  test('returns empty dashboard when no token', async () => {
+    delete process.env.GITHUB_TOKEN;
+    const gc = require('../github-client');
+    const result = await gc.getStarredDashboard();
+    expect(result).toEqual({ summary: { total_starred: 0, shown: 0, with_release: 0, active_7d: 0 }, repos: [] });
+  });
+
+  test('returns empty dashboard when no starred repos', async () => {
+    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({ data: [] });
+    const gc = require('../github-client');
+    const result = await gc.getStarredDashboard();
+    expect(result.repos).toEqual([]);
+    expect(result.summary.total_starred).toBe(0);
+  });
+
+  test('handles GraphQL error gracefully with REST fallback', async () => {
+    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
+      data: [{
+        owner: { login: 'owner' }, name: 'repo',
+        full_name: 'owner/repo', description: 'Test', language: 'JS',
+        html_url: 'https://github.com/owner/repo', updated_at: '2026-04-16T00:00:00Z',
+        stargazers_count: 100, forks_count: 10
+      }]
+    });
+    mockGraphql.mockRejectedValue(new Error('GraphQL error'));
+
+    const gc = require('../github-client');
+    const result = await gc.getStarredDashboard();
+    expect(result.repos.length).toBe(1);
+    expect(result.repos[0].recent_commits).toEqual([]);
+    expect(result.repos[0].latest_release).toBeNull();
   });
 });
