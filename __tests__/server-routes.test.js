@@ -12,11 +12,13 @@ const request = require('supertest');
 const mockCheckStarredBatch = jest.fn();
 const mockGetStarredRepos = jest.fn();
 const mockGetStarredRepoActivityBatch = jest.fn();
+const mockGetStarredDashboard = jest.fn();
 
 jest.mock('../github-client', () => ({
   checkStarredBatch: mockCheckStarredBatch,
   getStarredRepos: mockGetStarredRepos,
-  getStarredRepoActivityBatch: mockGetStarredRepoActivityBatch
+  getStarredRepoActivityBatch: mockGetStarredRepoActivityBatch,
+  getStarredDashboard: mockGetStarredDashboard
 }));
 
 // Mock axios to control the trending scrape
@@ -186,5 +188,56 @@ describe('/api/trending caching', () => {
 
     // axios.get should NOT have been called again
     expect(mockAxiosGet.mock.calls.length).toBe(firstCallCount);
+  });
+});
+
+// ─── /api/starred-dashboard ────────────────────────────────────────────────
+
+describe('/api/starred-dashboard', () => {
+  test('returns dashboard data with summary and repos', async () => {
+    const dashboardData = {
+      summary: { total_starred: 5, shown: 3, with_release: 1, active_7d: 2 },
+      repos: [
+        {
+          owner: 'n8n-io', name: 'n8n', full_name: 'n8n-io/n8n',
+          description: 'Workflow automation', language: 'TypeScript',
+          stars: 75200, forks: 2100, url: 'https://github.com/n8n-io/n8n',
+          updated_at: '2026-04-16T00:00:00Z',
+          latest_release: { tag: 'v1.5.0', name: 'n8n 1.5.0', body: '', date: '2026-04-14T00:00:00Z' },
+          recent_commits: [{ message: 'fix: auth', sha: 'abc123d', date: '2026-04-16T10:00:00Z', author: 'dev' }]
+        },
+        {
+          owner: 'torvalds', name: 'linux', full_name: 'torvalds/linux',
+          description: 'Linux kernel', language: 'C',
+          stars: 200000, forks: 50000, url: 'https://github.com/torvalds/linux',
+          updated_at: '2026-04-15T00:00:00Z',
+          latest_release: null,
+          recent_commits: [{ message: 'merge: fix', sha: 'def456a', date: '2026-04-15T08:00:00Z', author: 'torvalds' }]
+        }
+      ]
+    };
+
+    mockGetStarredDashboard.mockResolvedValue(dashboardData);
+
+    const res = await request(app).get('/api/starred-dashboard');
+
+    expect(mockGetStarredDashboard).toHaveBeenCalledTimes(1);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.summary.total_starred).toBe(5);
+    expect(res.body.data.summary.with_release).toBe(1);
+    expect(res.body.data.repos).toHaveLength(2);
+    expect(res.body.data.repos[0].latest_release.tag).toBe('v1.5.0');
+    expect(res.body.data.repos[1].latest_release).toBeNull();
+  });
+
+  test('returns empty dashboard when no token', async () => {
+    mockGetStarredDashboard.mockResolvedValue({
+      summary: { total_starred: 0, shown: 0, with_release: 0, active_7d: 0 },
+      repos: []
+    });
+
+    const res = await request(app).get('/api/starred-dashboard');
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.repos).toEqual([]);
   });
 });

@@ -315,6 +315,24 @@ app.get('/api/starred-activity', async (req, res) => {
   }
 });
 
+// Starred dashboard (per-repo snapshot with releases + commits)
+app.get('/api/starred-dashboard', async (req, res) => {
+  try {
+    if (!GITHUB_TOKEN) {
+      return res.json({
+        success: true,
+        data: { summary: { total_starred: 0, shown: 0, with_release: 0, active_7d: 0 }, repos: [] }
+      });
+    }
+
+    const dashboard = await githubClient.getStarredDashboard();
+    res.json({ success: true, data: dashboard });
+  } catch (error) {
+    console.error('Error fetching starred dashboard:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // SSE endpoint: translate descriptions, stream results as they complete
 app.post('/api/translate', async (req, res) => {
   const { texts } = req.body;
