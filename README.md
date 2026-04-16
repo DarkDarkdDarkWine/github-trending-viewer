@@ -21,10 +21,11 @@
 - **DeepSeek 流式翻译** - 页面加载后立即展示，翻译结果逐条推送更新，无需等待全部完成
 - **智能翻译** - 比机器翻译更自然的本地化体验
 
-### 📱 我的 Star 动态
-- **仓库更新监控** - 追踪你 Star 的仓库的最新 Release 和提交
-- **时间线展示** - 按时间排序的活动流
-- **过滤噪音** - 自动过滤 "谁 Star 了" 等不相关事件
+### ⭐ 我的 Star 仪表盘
+- **仪表盘视图** - 按仓库组织的卡片网格，替代旧版平铺事件流
+- **摘要统计栏** - 显示总仓库数、有新版本数、本周活跃数
+- **Release 优先排序** - 有新版本的仓库排在前面，一目了然
+- **Trending 联动** - Trending 页面支持"只看我 Star 的"过滤按钮
 
 ### 📈 自动报告生成（新）
 - **周报自动生成** - 每周一自动生成上周 GitHub Trending 分析报告
@@ -127,6 +128,14 @@ Body: { "repos": [{ "owner": "user", "name": "repo" }] }
 GET /api/starred-activity
 ```
 
+### 获取 Star 仪表盘
+
+```
+GET /api/starred-dashboard
+```
+
+返回按仓库组织的仪表盘数据，包含摘要统计、最新 Release 和近期 Commits。
+
 ### 获取分析报告列表
 
 ```
@@ -182,6 +191,14 @@ github-trending-viewer/
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.5.0 (2026-04-16)
+- ⭐ Star 页签重新设计为仪表盘风格：卡片网格 + 摘要统计栏
+- ⭐ 新增 `/api/starred-dashboard` API，按仓库组织返回 Release 和 Commits 快照
+- ⭐ Release 优先排序：有新版本的仓库排在前面
+- 🔗 Trending 页面新增"只看我的 Star"过滤按钮，支持 URL 参数持久化
+- 📱 页签名称简化：「我的Star动态」→「我的 Star」
+- 🧪 新增 6 个测试（dashboard 函数 + 路由），总计 26 个测试
 
 ### v1.4.0 (2026-04-16)
 - 🚀 GitHub API 层重构：引入 `@octokit/rest` + `@octokit/graphql`，替换原始 Axios 调用
