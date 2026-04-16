@@ -24,85 +24,92 @@ tabBtns.forEach(btn => {
     });
 });
 
-// Load starred activity
+// Load starred dashboard
 async function loadStarredActivity() {
-    const container = document.getElementById('starred-activity');
     const loading = document.getElementById('starred-loading');
+    const summaryEl = document.getElementById('starred-summary');
+    const dashboardEl = document.getElementById('starred-dashboard');
 
     loading.classList.remove('hidden');
-    container.innerHTML = '';
+    summaryEl.classList.add('hidden');
+    dashboardEl.innerHTML = '';
 
     try {
-        const response = await fetch(`${API_BASE}/api/starred-activity`);
+        const response = await fetch(`${API_BASE}/api/starred-dashboard`);
         const result = await response.json();
 
         if (!result.success) {
-            container.innerHTML = `<div class="activity-empty">${escapeHtml(result.message || '加载失败')}</div>`;
+            dashboardEl.innerHTML = `<div class="activity-empty">${escapeHtml(result.data?.summary ? '' : (result.message || '加载失败'))}</div>`;
             return;
         }
 
-        if (result.data.length === 0) {
-            container.innerHTML = '<div class="activity-empty">暂无动态</div>';
+        const { summary, repos } = result.data;
+
+        if (repos.length === 0) {
+            dashboardEl.innerHTML = '<div class="activity-empty">请配置 GitHub Token 以查看 Star 仪表盘</div>';
             return;
         }
 
-        container.innerHTML = result.data.map(event => createActivityItem(event)).join('');
+        // Render summary
+        summaryEl.innerHTML = `
+            <div class="star-summary-item">⭐ <strong>${summary.total_starred}</strong> 个仓库</div>
+            <div class="star-summary-item">📦 <strong>${summary.with_release}</strong> 个有新版本</div>
+            <div class="star-summary-item">🔥 <strong>${summary.active_7d}</strong> 个本周活跃</div>
+        `;
+        summaryEl.classList.remove('hidden');
+
+        // Render repo cards
+        dashboardEl.innerHTML = repos.map(repo => createStarRepoCard(repo)).join('');
     } catch (error) {
-        console.error('加载Star动态失败:', error);
-        container.innerHTML = '<div class="activity-empty">加载失败</div>';
+        console.error('加载Star仪表盘失败:', error);
+        dashboardEl.innerHTML = '<div class="activity-empty">加载失败</div>';
     } finally {
         loading.classList.add('hidden');
     }
 }
 
-// Create activity item HTML
-function createActivityItem(event) {
-    const timeAgo = formatTimeAgo(event.created_at);
-    const actionText = getActionText(event);
-    const detailsHtml = getDetailsHtml(event);
-    const repoDisplay = escapeHtml(event.repo);
-    const repoHref = escapeAttr(`https://github.com/${event.repo}`);
+// Create star repo card HTML
+function createStarRepoCard(repo) {
+    const languageColor = LANGUAGE_COLORS[repo.language] || '#8b949e';
+    const repoHref = escapeAttr(repo.url);
+
+    const releaseHtml = repo.latest_release
+        ? `<div class="star-repo-release">
+               📦 ${escapeHtml(repo.latest_release.tag)}
+               <span class="release-time">${formatTimeAgo(repo.latest_release.date)}</span>
+           </div>`
+        : '';
+
+    const commitsHtml = repo.recent_commits.length > 0
+        ? `<div class="star-repo-commits">
+               ${repo.recent_commits.map(c => `
+                   <div class="star-repo-commit">
+                       <span class="commit-sha">${escapeHtml(c.sha)}</span>
+                       <span>${escapeHtml(c.message)}</span>
+                       <span class="commit-time">${formatTimeAgo(c.date)}</span>
+                   </div>
+               `).join('')}
+           </div>`
+        : '';
 
     return `
-        <div class="activity-item">
-            <a href="${repoHref}" target="_blank" class="activity-repo">${repoDisplay}</a>
-            <div class="activity-details">
-                <strong>${actionText}</strong>
-                ${detailsHtml ? ` · ${detailsHtml}` : ''}
+        <div class="star-repo-card">
+            <div class="star-repo-header">
+                <div class="star-repo-title">
+                    <a href="${repoHref}" target="_blank" rel="noopener">
+                        ${escapeHtml(repo.owner)} / ${escapeHtml(repo.name)}
+                    </a>
+                </div>
+                <div class="star-repo-lang">
+                    ${repo.language ? `<span class="lang-dot" style="background:${languageColor}"></span>${escapeHtml(repo.language)}` : ''}
+                    <span class="star-repo-stars">⭐ ${formatNumber(repo.stars)}</span>
+                </div>
             </div>
-            <div class="activity-time">${timeAgo}</div>
+            ${releaseHtml}
+            ${repo.description ? `<div class="star-repo-desc">${escapeHtml(repo.description)}</div>` : ''}
+            ${commitsHtml}
         </div>
     `;
-}
-
-// Get action text based on event type
-function getActionText(event) {
-    const action = escapeHtml(event.details?.action || '');
-    const type = escapeHtml(event.details?.type || '');
-    const actions = {
-        'PushEvent': '提交代码',
-        'PullRequestEvent': `${action} PR`,
-        'IssuesEvent': `${action} Issue`,
-        'ReleaseEvent': '发布新版本',
-        'CreateEvent': `创建 ${type}`,
-        'DeleteEvent': `删除 ${type}`
-    };
-    return actions[event.type] || escapeHtml(event.type);
-}
-
-// Get details HTML based on event type — all user-supplied values escaped
-function getDetailsHtml(event) {
-    const d = event.details;
-    if (d.message) {
-        const msg = d.message.substring(0, 80) + (d.message.length > 80 ? '...' : '');
-        return escapeHtml(msg);
-    }
-    if (d.tag) {
-        return `🏷️ ${escapeHtml(d.tag)}` + (d.name ? ` - ${escapeHtml(d.name)}` : '');
-    }
-    if (d.title) return `📌 ${escapeHtml(d.title)}`;
-    if (d.name) return `${escapeHtml(d.type)}: ${escapeHtml(d.name)}`;
-    return '';
 }
 
 // Format time ago
@@ -149,6 +156,39 @@ const repositoriesEl = document.getElementById('repositories');
 
 let currentRepos = [];
 let starredStatus = {};
+
+// Star filter button for Trending page
+const starredFilterBtn = document.getElementById('starredFilterBtn');
+
+if (starredFilterBtn) {
+    // Restore from URL param
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('starred') === 'true') {
+        starredFilterBtn.classList.add('active');
+    }
+
+    starredFilterBtn.addEventListener('click', () => {
+        starredFilterBtn.classList.toggle('active');
+        applyStarredFilter();
+        // Persist to URL
+        const url = new URL(window.location);
+        if (starredFilterBtn.classList.contains('active')) {
+            url.searchParams.set('starred', 'true');
+        } else {
+            url.searchParams.delete('starred');
+        }
+        window.history.replaceState({}, '', url);
+    });
+}
+
+function applyStarredFilter() {
+    const isActive = starredFilterBtn?.classList.contains('active');
+    const filtered = isActive
+        ? currentRepos.filter(r => starredStatus[`${r.author}/${r.name}`] === true)
+        : currentRepos;
+    displayRepositories(filtered);
+    updateStats(filtered.length);
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -249,6 +289,7 @@ async function checkStarredStatus(repos) {
             });
 
             displayRepositories(currentRepos);
+            applyStarredFilter();
         }
     } catch (error) {
         console.error('检查star状态失败:', error);
