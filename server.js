@@ -8,6 +8,7 @@ const path = require('path');
 const db = require('./db');
 const { runScheduledReports } = require('./analyzer');
 const aiProvider = require('./ai-provider');
+const githubClient = require('./github-client');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -114,6 +115,9 @@ async function getRankingChanges(repos, since) {
 }
 
 // Scrape GitHub trending page
+// NOTE: This scrapes the GitHub trending HTML page. There is no official
+// GitHub API for trending data. If scraping returns 0 repos, the CSS
+// selectors below likely need updating after a GitHub UI change.
 async function scrapeTrending(since = 'daily') {
   try {
     const url = `https://github.com/trending?since=${since}`;
@@ -211,33 +215,26 @@ async function translateToChinese(text) {
   return aiProvider.translate(text);
 }
 
-// Check if user starred a repository
-async function checkStarred(owner, repo) {
-  if (!GITHUB_TOKEN) {
-    return null;
-  }
+// Star status checking is now handled by github-client.checkStarredBatch()
 
-  try {
-    await axios.get(`https://api.github.com/user/starred/${owner}/${repo}`, {
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    });
-    return true;
-  } catch (error) {
-    if (error.response?.status === 404) {
-      return false;
-    }
-    console.error(`Error checking star status for ${owner}/${repo}:`, error.message);
-    return null;
-  }
-}
+// ─── In-memory cache for trending scrape results ───────────────────────────
+const trendingCache = new Map();
 
 // API endpoint to get trending repositories
 app.get('/api/trending', async (req, res) => {
   try {
     const { since = 'daily' } = req.query;
+
+    // Check cache first
+    const cacheKey = `trending:${since}`;
+    const cached = trendingCache.get(cacheKey);
+    if (cached && Date.now() < cached.expires) {
+      return res.json({
+        success: true,
+        data: cached.data,
+        params: { since }
+      });
+    }
 
     console.log(`Fetching trending repos: since=${since}`);
 
@@ -248,6 +245,9 @@ app.get('/api/trending', async (req, res) => {
       ...repo,
       rankingChange: changes[index]
     }));
+
+    // Cache for 5 minutes
+    trendingCache.set(cacheKey, { data: reposWithChanges, expires: Date.now() + 5 * 60 * 1000 });
 
     updateRankingHistory(repos, since).catch(err => {
       console.error('Failed to update ranking history:', err);
@@ -271,25 +271,12 @@ app.get('/api/trending', async (req, res) => {
   }
 });
 
-// API endpoint to check if repos are starred
+// API endpoint to check if repos are starred (batch GraphQL via github-client)
 app.post('/api/check-starred', async (req, res) => {
   try {
     const { repos } = req.body;
 
-    if (!GITHUB_TOKEN) {
-      return res.json({
-        success: true,
-        data: repos.map(r => ({ owner: r.owner, name: r.name, starred: null })),
-        message: 'GitHub token not configured'
-      });
-    }
-
-    const starredStatus = await Promise.all(
-      repos.map(async ({ owner, name }) => {
-        const starred = await checkStarred(owner, name);
-        return { owner, name, starred };
-      })
-    );
+    const starredStatus = await githubClient.checkStarredBatch(repos);
 
     res.json({
       success: true,
@@ -304,106 +291,22 @@ app.post('/api/check-starred', async (req, res) => {
   }
 });
 
-// Get user's starred repositories, sorted by recently updated
-async function getStarredRepos() {
-  if (!GITHUB_TOKEN) return [];
+// Starred repos and activity now handled by github-client batch functions
 
-  try {
-    const response = await axios.get('https://api.github.com/user/starred', {
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json'
-      },
-      params: { per_page: 100, sort: 'updated', direction: 'desc' }
-    });
-    return response.data.map(repo => ({
-      owner: repo.owner.login,
-      name: repo.name,
-      full_name: repo.full_name,
-      description: repo.description,
-      descriptionZh: repo.description,
-      language: repo.language,
-      url: repo.html_url,
-      updated_at: repo.updated_at
-    }));
-  } catch (error) {
-    console.error('Error fetching starred repos:', error.message);
-    return [];
-  }
-}
-
-// Get recent activity for a repo — always fetch both releases and commits
-async function getRepoActivity(owner, repo) {
-  const activities = [];
-
-  const [releasesRes, commitsRes] = await Promise.allSettled([
-    axios.get(`https://api.github.com/repos/${owner}/${repo}/releases`, {
-      headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
-      params: { per_page: 5 }
-    }),
-    axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
-      headers: { 'Authorization': `token ${GITHUB_TOKEN}` },
-      params: { per_page: 5 }
-    })
-  ]);
-
-  if (releasesRes.status === 'fulfilled') {
-    for (const release of releasesRes.value.data || []) {
-      activities.push({
-        type: 'ReleaseEvent',
-        repo: `${owner}/${repo}`,
-        actor: release.author?.login || owner,
-        avatar: release.author?.avatar_url || '',
-        created_at: release.published_at || release.created_at,
-        details: { tag: release.tag_name, name: release.name, body: release.body }
-      });
-    }
-  }
-
-  if (commitsRes.status === 'fulfilled') {
-    for (const commit of commitsRes.value.data || []) {
-      activities.push({
-        type: 'PushEvent',
-        repo: `${owner}/${repo}`,
-        actor: commit.author?.login || commit.commit?.author?.name || 'unknown',
-        avatar: commit.author?.avatar_url || '',
-        created_at: commit.commit?.author?.date,
-        details: { message: commit.commit?.message?.split('\n')[0], sha: commit.sha?.substring(0, 7) }
-      });
-    }
-  }
-
-  return activities.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-}
-
-// Get starred repos activity
+// Get starred repos activity (batch GraphQL via github-client)
 app.get('/api/starred-activity', async (req, res) => {
   try {
     if (!GITHUB_TOKEN) {
       return res.json({ success: false, message: 'GitHub token not configured' });
     }
 
-    const repos = await getStarredRepos();
+    const repos = await githubClient.getStarredRepos();
     if (repos.length === 0) {
       return res.json({ success: true, data: [], message: 'No starred repos found' });
     }
 
-    // 取前 30 个最近有更新的仓库检查动态（sort=updated 已保证顺序）
-    const activityPromises = repos.slice(0, 30).map(async repo => {
-      const events = await getRepoActivity(repo.owner, repo.name);
-      return { repo, events: events.slice(0, 5) };
-    });
-
-    const results = await Promise.all(activityPromises);
-
-    const allEvents = [];
-    results.forEach(({ repo, events }) => {
-      events.forEach(event => {
-        allEvents.push({ ...event, repo_info: repo });
-      });
-    });
-
-    allEvents.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const top30 = repos.slice(0, 30);
+    const allEvents = await githubClient.getStarredRepoActivityBatch(top30);
 
     res.json({ success: true, data: allEvents.slice(0, 50) });
   } catch (error) {
@@ -552,10 +455,15 @@ app.put('/api/ai-providers/:id/models', async (req, res) => {
   }
 });
 
-app.listen(PORT, async () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  if (!GITHUB_TOKEN) {
-    console.warn('⚠️  GITHUB_TOKEN not set. Star status checking will be disabled.');
-  }
-  await db.ensureReportsSchema();
-});
+// Export app for testing, only listen when not in test environment
+module.exports = app;
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, async () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    if (!GITHUB_TOKEN) {
+      console.warn('⚠️  GITHUB_TOKEN not set. Star status checking will be disabled.');
+    }
+    await db.ensureReportsSchema();
+  });
+}

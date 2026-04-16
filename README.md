@@ -1,4 +1,4 @@
-# GitHub Trending Viewer v1.3.0
+# GitHub Trending Viewer v1.4.0
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、个人 Star 仓库动态监控和自动报告生成。
 
@@ -156,8 +156,10 @@ POST /api/reports/generate
 ```
 github-trending-viewer/
 ├── server.js              # Express 后端服务
+├── github-client.js       # GitHub API 客户端（Octokit + GraphQL + 缓存）
 ├── db.js                  # PostgreSQL 数据库模块
 ├── analyzer.js            # 报告生成模块（周报/月报）
+├── ai-provider.js         # AI 供应商管理模块
 ├── package.json           # 项目依赖
 ├── docker-compose.yml     # Docker 配置
 ├── .env.example          # 环境变量示例
@@ -165,6 +167,7 @@ github-trending-viewer/
 │   ├── index.html        # 主页面
 │   ├── styles.css        # 样式文件
 │   └── app.js            # 前端逻辑
+├── __tests__/             # 测试文件
 ├── data/                  # 数据存储（排名历史）
 └── SETUP.md              # 配置指南
 ```
@@ -174,10 +177,20 @@ github-trending-viewer/
 - **后端**: Node.js + Express
 - **前端**: 原生 HTML/CSS/JavaScript
 - **数据抓取**: Cheerio + Axios
+- **GitHub API**: @octokit/rest + @octokit/graphql
 - **翻译**: DeepSeek AI
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.4.0 (2026-04-16)
+- 🚀 GitHub API 层重构：引入 `@octokit/rest` + `@octokit/graphql`，替换原始 Axios 调用
+- ⚡ Star 状态检查从 20 次 REST 调用优化为 1 次 GraphQL 批量查询
+- ⚡ Starred 动态从 60 次 REST 调用优化为 2 次 GraphQL 批量查询
+- 📦 新增 `github-client.js` 模块，封装所有 GitHub API 交互
+- 💾 新增服务端 TTL 缓存：trending 爬取结果缓存 5 分钟，API 响应缓存 5-10 分钟
+- 🐛 修复 Dockerfile healthcheck 指向不存在的 `/api/languages` 端点
+- 🧪 新增 20 个单元/集成测试（Jest + Supertest）
 
 ### v1.3.0 (2026-03-24)
 - 📈 新增自动报告生成功能：周一自动生成上周周报，每月1日生成上月月报
