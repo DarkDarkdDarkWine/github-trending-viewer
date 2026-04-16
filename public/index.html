@@ -15,7 +15,7 @@
 
         <nav class="tabs">
             <button class="tab-btn active" data-tab="trending">热门趋势</button>
-            <button class="tab-btn" data-tab="starred">我的Star动态</button>
+            <button class="tab-btn" data-tab="starred">我的 Star</button>
             <button class="tab-btn" data-tab="reports">趋势报告</button>
             <button class="tab-btn" data-tab="settings">AI 设置</button>
         </nav>
@@ -32,6 +32,7 @@
                 </div>
 
                 <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+                <button id="starredFilterBtn" class="filter-btn" title="只看我 Star 过的项目">⭐ 只看我的 Star</button>
             </div>
 
             <div id="loading" class="loading hidden">
@@ -51,9 +52,10 @@
         <div id="tab-starred" class="tab-content">
             <div id="starred-loading" class="loading hidden">
                 <div class="spinner"></div>
-                <p>正在加载Star动态...</p>
+                <p>正在加载 Star 仪表盘...</p>
             </div>
-            <div id="starred-activity" class="activity-timeline"></div>
+            <div id="starred-summary" class="star-summary hidden"></div>
+            <div id="starred-dashboard" class="star-dashboard"></div>
         </div>
 
         <div id="tab-reports" class="tab-content">
