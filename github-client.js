@@ -348,9 +348,30 @@ async function getStarredDashboard() {
   };
 }
 
+// ─── README fetching (for AI summarization) ────────────────────────────────
+
+async function fetchRepoReadme(owner, name) {
+  if (!GITHUB_TOKEN) throw new Error('GITHUB_TOKEN not configured');
+
+  const client = getClient();
+  const query = `query {
+    repository(owner: "${owner}", name: "${name}") {
+      object(expression: "HEAD:README.md") {
+        ... on Blob { text oid }
+      }
+    }
+  }`;
+
+  const result = await client.graphql(query);
+  const obj = result?.repository?.object;
+  if (!obj || !obj.text) return null;
+  return { text: obj.text, sha: obj.oid };
+}
+
 module.exports = {
   checkStarredBatch,
   getStarredRepos,
   getStarredRepoActivityBatch,
-  getStarredDashboard
+  getStarredDashboard,
+  fetchRepoReadme
 };

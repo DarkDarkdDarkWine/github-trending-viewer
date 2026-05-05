@@ -206,7 +206,7 @@ async function fetchModels(id, apiKey) {
       timeout: 15000,
     });
 
-    let models = (res.data.data || []).map(m => ({
+    const models = (res.data.data || []).map(m => ({
       id: m.id,
       name: m.name || m.id,
       owned_by: m.owned_by || '',
@@ -309,26 +309,24 @@ async function getProviderForFeature(feature) {
 }
 
 // 调用 AI 进行翻译（单条）
+// 成功返回译文，失败抛出异常（由调用方决定降级策略）
 async function translate(text) {
   const provider = await getProviderForFeature('translate');
-  if (!provider) return text;
+  if (!provider) throw new Error('No AI provider configured for translation');
 
   const { preset, apiKey, model } = provider;
-  try {
-    const response = await axios.post(
-      `${preset.baseUrl}${preset.chatPath}`,
-      {
-        model,
-        max_tokens: 100,
-        messages: [{ role: 'user', content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}` }],
-      },
-      { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 10000 }
-    );
-    return response.data.choices?.[0]?.message?.content?.trim() || text;
-  } catch (err) {
-    console.warn('AI translation failed:', err.response?.data?.error?.message || err.message);
-    return text;
-  }
+  const response = await axios.post(
+    `${preset.baseUrl}${preset.chatPath}`,
+    {
+      model,
+      max_tokens: 100,
+      messages: [{ role: 'user', content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}` }],
+    },
+    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+  );
+  const result = response.data.choices?.[0]?.message?.content?.trim();
+  if (!result) throw new Error('Empty translation response');
+  return result;
 }
 
 // 批量翻译
@@ -378,9 +376,15 @@ async function generateReport(stats, reportType) {
     `总上榜次数：${stats.total_appearances}，独立项目数：${stats.unique_repos}`,
     '',
     'Top 15 最活跃项目：',
-    ...stats.top_repos.map((r, i) =>
-      `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）- 上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank} 名，平均新增 ${r.avg_period_stars} stars\n   简介：${r.description || '无'}`
-    ),
+    ...stats.top_repos.map((r, i) => {
+      let line = `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）- 上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank} 名，平均新增 ${r.avg_period_stars} stars`;
+      if (r.ai_summary) {
+        line += `\n   AI 解读：${r.ai_summary}`;
+      } else if (r.description) {
+        line += `\n   简介：${r.description}`;
+      }
+      return line;
+    }),
     '',
     '编程语言分布（Top 5）：',
     ...stats.language_distribution.slice(0, 5).map(l =>

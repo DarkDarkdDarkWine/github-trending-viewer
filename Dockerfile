@@ -15,6 +15,8 @@ COPY github-client.js ./
 COPY db.js ./
 COPY analyzer.js ./
 COPY ai-provider.js ./
+COPY summarizer.js ./
+COPY scheduler.js ./
 COPY public ./public
 
 # Expose port

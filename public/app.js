@@ -198,13 +198,26 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBtn.addEventListener('click', fetchTrending);
 });
 
-// Stream translations and update each card as results arrive
+// Stream translations and update each card as results arrive in order
 async function streamTranslations(repos) {
     const texts = repos
-        .map((repo, index) => repo.description ? { index, text: repo.description } : null)
+        .map((repo, index) => {
+            if (!repo.description) return null;
+            return { index, text: repo.description };
+        })
         .filter(Boolean);
 
     if (texts.length === 0) return;
+
+    // Add translation animation to all cards that will be translated
+    for (const { index } of texts) {
+        const card = document.querySelector(`[data-repo-index="${index}"]`);
+        const el = card && card.querySelector('.repo-description');
+        if (el) {
+            el.classList.add('translating');
+            el.setAttribute('data-original', el.textContent);
+        }
+    }
 
     try {
         const response = await fetch(`${API_BASE}/api/translate`, {
@@ -212,6 +225,8 @@ async function streamTranslations(repos) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ texts })
         });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -227,14 +242,34 @@ async function streamTranslations(repos) {
 
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
-                const { index, translation } = JSON.parse(line.slice(6));
-                const card = document.querySelector(`[data-repo-index="${index}"]`);
+                const data = JSON.parse(line.slice(6));
+                const card = document.querySelector(`[data-repo-index="${data.index}"]`);
                 const el = card && card.querySelector('.repo-description');
-                if (el) el.textContent = translation;
+                if (!el) continue;
+
+                el.classList.remove('translating');
+
+                if (data.error) {
+                    el.classList.add('translation-failed');
+                    el.title = `翻译失败: ${data.message || '未知错误'}`;
+                } else {
+                    el.textContent = data.translation;
+                    el.classList.add('translation-done');
+                }
             }
         }
     } catch (error) {
         console.warn('Translation stream failed:', error);
+        // On stream failure, mark all pending cards as failed
+        for (const { index } of texts) {
+            const card = document.querySelector(`[data-repo-index="${index}"]`);
+            const el = card && card.querySelector('.repo-description');
+            if (el && el.classList.contains('translating')) {
+                el.classList.remove('translating');
+                el.classList.add('translation-failed');
+                el.title = '翻译连接失败';
+            }
+        }
     }
 }
 
@@ -487,7 +522,7 @@ const reportDetail = document.getElementById('report-detail');
 const reportDetailContent = document.getElementById('report-detail-content');
 document.getElementById('reportBackBtn').addEventListener('click', showReportList);
 
-const REPORT_TYPE_LABEL = { weekly: '周报', monthly: '月报' };
+const REPORT_TYPE_LABEL = { daily: '日报', weekly: '周报', monthly: '月报' };
 const STATUS_LABEL = { pending: '生成中', done: '已完成', failed: '生成失败' };
 const STATUS_CLASS = { pending: 'status-pending', done: 'status-done', failed: 'status-failed' };
 
@@ -508,7 +543,7 @@ async function loadReports() {
         }
 
         // 按类型分组
-        const grouped = { weekly: [], monthly: [] };
+        const grouped = { daily: [], weekly: [], monthly: [] };
         result.data.forEach(r => {
             if (grouped[r.report_type]) grouped[r.report_type].push(r);
         });

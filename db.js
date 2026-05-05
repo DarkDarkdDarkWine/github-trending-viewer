@@ -122,6 +122,23 @@ async function ensureReportsSchema() {
   } catch (err) {
     console.error('DB: ensureReportsSchema failed:', err.message);
   }
+  try {
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS repo_summaries (
+        id            SERIAL PRIMARY KEY,
+        owner         VARCHAR(255) NOT NULL,
+        name          VARCHAR(255) NOT NULL,
+        summary       TEXT NOT NULL,
+        readme_sha    VARCHAR(64),
+        summarized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (owner, name)
+      )
+    `);
+    // Index for efficient cache-validation queries
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_repo_summaries_owner_name ON repo_summaries (owner, name)`);
+  } catch (err) {
+    console.error('DB: ensureSummariesSchema failed:', err.message);
+  }
 }
 
 // 获取或创建报告记录，返回行数据
@@ -192,6 +209,58 @@ async function getRetryableReports() {
   return res.rows;
 }
 
+// ─── Repo Summaries (AI-generated README summaries, 30-day cache) ───
+
+// Get cached summary if it's less than maxAgeDays old
+async function getCachedSummary(owner, name, maxAgeDays = 30) {
+  const p = getPool();
+  if (!p) return null;
+  const res = await p.query(
+    `SELECT summary, readme_sha, summarized_at
+     FROM repo_summaries
+     WHERE owner = $1 AND name = $2
+       AND summarized_at > NOW() - ($3 || ' days')::INTERVAL`,
+    [owner, name, String(maxAgeDays)]
+  );
+  return res.rows[0] || null;
+}
+
+// Upsert a repo summary
+async function upsertSummary(owner, name, summary, readmeSha) {
+  const p = getPool();
+  if (!p) return null;
+  const res = await p.query(
+    `INSERT INTO repo_summaries (owner, name, summary, readme_sha, summarized_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (owner, name)
+     DO UPDATE SET summary = EXCLUDED.summary, readme_sha = EXCLUDED.readme_sha, summarized_at = NOW()
+     RETURNING *`,
+    [owner, name, summary, readmeSha]
+  );
+  return res.rows[0];
+}
+
+// Get summaries for a batch of repos (all at once)
+async function getSummariesForRepos(repos, maxAgeDays = 30) {
+  const p = getPool();
+  if (!p || repos.length === 0) return {};
+  const params = [maxAgeDays];
+  const placeholders = repos.map((r, i) => {
+    params.push(r.owner, r.name);
+    return `($${i * 2 + 2}, $${i * 2 + 3})`;
+  });
+  const res = await p.query(
+    `SELECT owner, name, summary, readme_sha
+     FROM repo_summaries
+     WHERE summarized_at > NOW() - ($1 || ' days')::INTERVAL
+       AND (owner, name) IN (${placeholders.join(',')})`,
+    params
+  );
+  const map = {};
+  res.rows.forEach(r => { map[`${r.owner}/${r.name}`] = r; });
+  return map;
+}
+
 // 通用查询（供 analyzer.js 使用）
 async function query(sql, params) {
   const p = getPool();
@@ -209,5 +278,8 @@ module.exports = {
   listReports,
   getReport,
   getRetryableReports,
+  getCachedSummary,
+  upsertSummary,
+  getSummariesForRepos,
   query
 };

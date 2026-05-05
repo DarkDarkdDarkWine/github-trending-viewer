@@ -9,6 +9,7 @@ const db = require('./db');
 const { runScheduledReports } = require('./analyzer');
 const aiProvider = require('./ai-provider');
 const githubClient = require('./github-client');
+const { startScheduler } = require('./scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -333,7 +334,8 @@ app.get('/api/starred-dashboard', async (req, res) => {
   }
 });
 
-// SSE endpoint: translate descriptions, stream results as they complete
+// SSE endpoint: translate descriptions, stream results in order
+// Each event: { index, translation } on success, { index, error: true } on failure
 app.post('/api/translate', async (req, res) => {
   const { texts } = req.body;
   if (!texts || texts.length === 0) {
@@ -345,8 +347,13 @@ app.post('/api/translate', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   for (const { index, text } of texts) {
-    const translation = await translateToChinese(text);
-    res.write(`data: ${JSON.stringify({ index, translation })}\n\n`);
+    try {
+      const translation = await translateToChinese(text);
+      res.write(`data: ${JSON.stringify({ index, translation })}\n\n`);
+    } catch (err) {
+      console.error(`Translation error [${index}]:`, err.message);
+      res.write(`data: ${JSON.stringify({ index, error: true, message: err.message })}\n\n`);
+    }
   }
 
   res.end();
@@ -483,5 +490,37 @@ if (process.env.NODE_ENV !== 'test') {
       console.warn('⚠️  GITHUB_TOKEN not set. Star status checking will be disabled.');
     }
     await db.ensureReportsSchema();
+
+    // ── Scheduled scraping: populate trending data automatically ──────
+    async function scheduledScrape(since) {
+      console.log(`[Scheduler] Scraping trending: since=${since}`);
+      const repos = await scrapeTrending(since);
+      await updateRankingHistory(repos, since);
+      await db.saveTrendingData(repos, since).catch(err => {
+        console.error('Failed to save trending data to DB:', err.message);
+      });
+      // Refresh the in-memory cache so API returns fresh data
+      trendingCache.set(`trending:${since}`, {
+        data: repos.map((r) => ({
+          ...r,
+          rankingChange: { change: 0, isNew: false }
+        })),
+        expires: Date.now() + 5 * 60 * 1000
+      });
+    }
+
+    startScheduler(async (since) => {
+      await scheduledScrape(since);
+      // After scraping daily trending at end of day, generate reports
+      if (since === 'daily') {
+        try {
+          console.log('[Scheduler] Generating reports...');
+          const result = await runScheduledReports();
+          console.log('[Scheduler] Reports generated:', result);
+        } catch (err) {
+          console.error('[Scheduler] Report generation failed:', err.message);
+        }
+      }
+    });
   });
 }
