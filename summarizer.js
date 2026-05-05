@@ -55,7 +55,7 @@ async function ensureSummaries(repos) {
       if (result.status === 'fulfilled' && result.value) {
         results.set(key, result.value);
       } else {
-        const err = result.status === 'rejected' ? result.reason?.message : 'unknown';
+        const err = result.status === 'rejected' ? (result.reason?.message || String(result.reason)) : 'unknown';
         console.warn(`[Summarizer] Failed for ${key}: ${err}`);
         results.set(key, ''); // empty string = no summary available
       }
