@@ -242,9 +242,9 @@ async function generateDailyReport(report) {
     }
 
     if (summary) {
-      lines.push(`**AI 解读**：${summary}`);
+      lines.push(`📝 ${summary}`);
     } else {
-      lines.push(`*暂无 AI 解读*`);
+      lines.push(`*暂无 AI 简介*`);
     }
     lines.push('');
     lines.push('---');

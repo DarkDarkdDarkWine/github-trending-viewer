@@ -379,7 +379,7 @@ async function generateReport(stats, reportType) {
     ...stats.top_repos.map((r, i) => {
       let line = `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）- 上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank} 名，平均新增 ${r.avg_period_stars} stars`;
       if (r.ai_summary) {
-        line += `\n   AI 解读：${r.ai_summary}`;
+        line += `\n   简介：${r.ai_summary}`;
       } else if (r.description) {
         line += `\n   简介：${r.description}`;
       }
