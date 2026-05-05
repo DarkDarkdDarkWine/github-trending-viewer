@@ -319,12 +319,15 @@ async function translate(text) {
     `${preset.baseUrl}${preset.chatPath}`,
     {
       model,
-      max_tokens: 100,
+      max_tokens: 300,
       messages: [{ role: 'user', content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}` }],
     },
-    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 15000 }
   );
-  const result = response.data.choices?.[0]?.message?.content?.trim();
+  const msg = response.data.choices?.[0]?.message || {};
+  // v4 models may put the answer in content, but if it's empty they may have
+  // spent all tokens on reasoning — fall back to reasoning_content
+  const result = (msg.content || msg.reasoning_content || '').trim();
   if (!result) throw new Error('Empty translation response');
   return result;
 }
@@ -347,7 +350,8 @@ async function translateBatch(texts) {
       },
       { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    const raw = response.data.choices[0].message.content.trim();
+    const msg = response.data.choices?.[0]?.message || {};
+    const raw = (msg.content || msg.reasoning_content || '').trim();
     const result = [...texts];
     raw.split('\n').forEach(line => {
       const m = line.match(/^(\d+)\.\s+(.+)/);
@@ -413,7 +417,8 @@ async function generateReport(stats, reportType) {
     { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 300000 }
   );
 
-  return response.data.choices[0].message.content.trim();
+  const msg = response.data.choices?.[0]?.message || {};
+  return (msg.content || msg.reasoning_content || '').trim();
 }
 
 module.exports = {

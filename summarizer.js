@@ -134,7 +134,8 @@ ${readmeText}`;
         timeout: 30000,
       }
     );
-    return response.data.choices?.[0]?.message?.content?.trim() || '';
+    const msg = response.data.choices?.[0]?.message || {};
+    return (msg.content || msg.reasoning_content || '').trim();
   } catch (err) {
     console.warn(`[Summarizer] AI call failed for ${owner}/${name}: ${err.message}`);
     return '';
