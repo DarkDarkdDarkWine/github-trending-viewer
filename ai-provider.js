@@ -324,12 +324,9 @@ async function translate(text) {
     },
     { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 15000 }
   );
-  const msg = response.data.choices?.[0]?.message || {};
-  // v4 models may put the answer in content, but if it's empty they may have
-  // spent all tokens on reasoning — fall back to reasoning_content
-  const result = (msg.content || msg.reasoning_content || '').trim();
-  if (!result) throw new Error('Empty translation response');
-  return result;
+  const content = response.data.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error('Empty translation response');
+  return content;
 }
 
 // 批量翻译
@@ -350,8 +347,7 @@ async function translateBatch(texts) {
       },
       { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    const msg = response.data.choices?.[0]?.message || {};
-    const raw = (msg.content || msg.reasoning_content || '').trim();
+    const raw = (response.data.choices?.[0]?.message?.content || '').trim();
     const result = [...texts];
     raw.split('\n').forEach(line => {
       const m = line.match(/^(\d+)\.\s+(.+)/);
@@ -417,8 +413,7 @@ async function generateReport(stats, reportType) {
     { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 300000 }
   );
 
-  const msg = response.data.choices?.[0]?.message || {};
-  return (msg.content || msg.reasoning_content || '').trim();
+  return (response.data.choices?.[0]?.message?.content || '').trim();
 }
 
 module.exports = {

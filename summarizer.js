@@ -123,7 +123,7 @@ ${readmeText}`;
       `${preset.baseUrl}${preset.chatPath}`,
       {
         model,
-        max_tokens: 300,
+        max_tokens: 600,
         messages: [{ role: 'user', content: prompt }],
       },
       {
@@ -134,8 +134,8 @@ ${readmeText}`;
         timeout: 30000,
       }
     );
-    const msg = response.data.choices?.[0]?.message || {};
-    return (msg.content || msg.reasoning_content || '').trim();
+    const content = response.data.choices?.[0]?.message?.content?.trim();
+    return content || '';
   } catch (err) {
     console.warn(`[Summarizer] AI call failed for ${owner}/${name}: ${err.message}`);
     return '';

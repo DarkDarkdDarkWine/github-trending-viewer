@@ -214,10 +214,13 @@ async function generateDailyReport(report) {
   const summaries = await ensureSummaries(repos);
 
   // Build report content
+  // Format date as YYYY-MM-DD regardless of input format
+  const displayDate = String(periodDate).split('T')[0];
+
   const lines = [
     `# 📅 GitHub Trending 日报`,
     ``,
-    `**日期**：${periodDate}`,
+    `**日期**：${displayDate}`,
     ``,
     `---`,
     ``
