@@ -1,12 +1,20 @@
-# GitHub Trending Viewer v1.4.0
+# GitHub Trending Viewer v1.6.0
 
-一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、个人 Star 仓库动态监控和自动报告生成。
+一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
 
 ## ✨ 功能特性
 
 ### 🎯 核心功能
 - **🔥 热门趋势查看** - 查看 GitHub 每日/每周/每月热门项目
 - **🌏 全中文界面** - 完整的汉化 UI 和提示信息
+- **⏰ 定时自动抓取** - node-cron 每日 3 次自动抓取榜单入库，无需依赖用户访问
+
+### 🤖 AI 增强
+- **流式翻译** - 页面加载后自上而下逐条翻译，闪光动画实时反馈翻译进度
+- **翻译失败标记** - 失败项波浪下划线高亮，hover 显示原因
+- **每日 AI 解读** - 每天自动生成日报，AI 阅读每个仓库的 README 后撰写一句话中文简介
+- **简介缓存** - 30 天内同一仓库复用已生成的简介，节省 AI Token 消耗
+- **多供应商支持** - DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter，可自由分配翻译和报告任务
 
 ### ⭐ Star 相关
 - **Star 状态显示** - 显示你是否已 Star 该项目
@@ -17,20 +25,17 @@
 - **新上榜标记** - 标记首次出现的项目
 - **颜色标识** - 绿色(上升)、红色(下降)、灰色(保持)、蓝色(新上榜)
 
-### 🤖 AI 增强
-- **DeepSeek 流式翻译** - 页面加载后立即展示，翻译结果逐条推送更新，无需等待全部完成
-- **智能翻译** - 比机器翻译更自然的本地化体验
-
 ### ⭐ 我的 Star 仪表盘
 - **仪表盘视图** - 按仓库组织的卡片网格，替代旧版平铺事件流
 - **摘要统计栏** - 显示总仓库数、有新版本数、本周活跃数
 - **Release 优先排序** - 有新版本的仓库排在前面，一目了然
 - **Trending 联动** - Trending 页面支持"只看我 Star 的"过滤按钮
 
-### 📈 自动报告生成（新）
+### 📈 自动报告生成
+- **日报自动生成** - 每天自动生成昨日 Trending 日报，含 AI 逐项目解读
 - **周报自动生成** - 每周一自动生成上周 GitHub Trending 分析报告
-- **月报自动生成** - 每月1日自动生成上月分析报告
-- **深度 AI 分析** - 使用 DeepSeek 分析技术趋势、热点成因和社区注意力变化
+- **月报自动生成** - 每月 1 日自动生成上月分析报告
+- **深度 AI 分析** - 周报/月报引用每日 AI 简介，分析技术趋势、热点成因和社区注意力变化
 - **数据可视化** - 展示 Top 项目、语言分布、每日上榜数量等统计数据
 
 ## 🚀 快速开始
@@ -55,43 +60,33 @@ npm run dev
 
 ## 🐳 Docker 部署
 
-### 方式一：一键部署到 NAS
-
 ```bash
-# Windows
-deploy-to-nas.bat 192.168.31.14 admin
-
-# Linux/Mac
-./deploy-to-nas.sh 192.168.31.14 admin
-```
-
-### 方式二：手动部署
-
-```bash
-# 1. 复制文件到 NAS
-scp -r . user@nas:/path/to/deploy
-
-# 2. 构建并启动
+# 构建并启动
 docker compose up -d --build
 
-# 3. 访问 http://NAS_IP:3000
+# 访问 http://localhost:3000
 ```
 
 ## ⚙️ 配置说明
 
-### GitHub Token（可选）
-
-用于查询 Star 状态和翻译功能：
+### 环境变量
 
 ```bash
 # .env 文件
-GITHUB_TOKEN=ghp_your_token_here
-DEEPSEEK_API_KEY=sk-your_deepseek_key
+GITHUB_TOKEN=ghp_your_token_here       # GitHub API（Star 状态、README 获取）
+DATABASE_URL=postgresql://...           # PostgreSQL（报告存储、简介缓存）
 ```
 
-获取 GitHub Token: https://github.com/settings/tokens (需要 `public_repo` 或 `user` 权限)
+- GitHub Token: https://github.com/settings/tokens (需要 `public_repo` 或 `user` 权限)
+- AI API Key 通过 Web 界面「AI 设置」页签配置，支持多供应商
 
-获取 DeepSeek API Key: https://platform.deepseek.com
+### AI 供应商配置
+
+在「AI 设置」页签中：
+1. 选择供应商（DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter）
+2. 填入 API Key，点击「保存」（自动连通测试）
+3. 选择翻译和报告各自使用的模型
+4. 在「任务分配」中指定翻译和报告由哪个供应商负责
 
 ## 📡 API 接口
 
@@ -113,7 +108,8 @@ POST /api/translate
 Body: { "texts": [{ "index": 0, "text": "description" }] }
 ```
 
-以 SSE 格式逐条返回翻译结果：`data: {"index": 0, "translation": "..."}`
+以 SSE 格式逐条返回翻译结果：`data: {"index": 0, "translation": "..."}`  
+失败时返回：`data: {"index": 0, "error": true, "message": "..."}`
 
 ### 检查 Star 状态
 
@@ -142,7 +138,7 @@ GET /api/starred-dashboard
 GET /api/reports
 ```
 
-返回所有已生成的报告列表，按时间倒序。
+返回所有已生成的报告（日报/周报/月报），按时间倒序。
 
 ### 获取单份报告详情
 
@@ -155,30 +151,46 @@ GET /api/reports/:id
 ### 手动触发报告生成
 
 ```
-POST /api/reports/generate
+GET /api/generate-reports
 ```
 
-手动触发检查并生成应生成的报告（周报/月报）。
+手动触发检查并生成应生成的报告。
+
+### AI 供应商管理
+
+```
+GET    /api/ai-providers              # 获取所有供应商及配置状态
+POST   /api/ai-providers              # 添加/更新供应商 Key
+DELETE /api/ai-providers/:id          # 删除供应商配置
+POST   /api/ai-providers/test         # 测试连通性
+POST   /api/ai-providers/models       # 拉取可用模型列表
+PUT    /api/ai-providers/:id/models   # 更新模型选择
+GET    /api/ai-providers/task-assign  # 获取任务分配
+PUT    /api/ai-providers/task-assign  # 更新任务分配
+```
 
 ## 🏗️ 项目结构
 
 ```
 github-trending-viewer/
-├── server.js              # Express 后端服务
+├── server.js              # Express 后端服务 + API 路由
 ├── github-client.js       # GitHub API 客户端（Octokit + GraphQL + 缓存）
-├── db.js                  # PostgreSQL 数据库模块
-├── analyzer.js            # 报告生成模块（周报/月报）
-├── ai-provider.js         # AI 供应商管理模块
+├── db.js                  # PostgreSQL 数据库模块（trending / reports / summaries）
+├── analyzer.js            # 报告生成模块（日报/周报/月报）
+├── ai-provider.js         # AI 供应商管理（多供应商、模型选择、任务分配）
+├── summarizer.js          # README 获取 → AI 摘要 → 30天缓存
+├── scheduler.js           # 定时调度器（每日自动抓取 + 报告生成）
 ├── package.json           # 项目依赖
-├── docker-compose.yml     # Docker 配置
-├── .env.example          # 环境变量示例
+├── Dockerfile             # Docker 镜像构建
+├── docker-compose.yml     # Docker 编排配置
+├── .env.example           # 环境变量示例
 ├── public/
-│   ├── index.html        # 主页面
-│   ├── styles.css        # 样式文件
-│   └── app.js            # 前端逻辑
-├── __tests__/             # 测试文件
-├── data/                  # 数据存储（排名历史）
-└── SETUP.md              # 配置指南
+│   ├── index.html         # 主页面（4 个页签）
+│   ├── styles.css         # 样式（暗色主题 + 翻译动画）
+│   └── app.js             # 前端逻辑
+├── __tests__/             # 测试文件（26 个测试）
+├── data/                  # 运行时数据（排名历史、AI 配置）
+└── SETUP.md               # 配置指南
 ```
 
 ## 🛠️ 技术栈
@@ -186,11 +198,26 @@ github-trending-viewer/
 - **后端**: Node.js + Express
 - **前端**: 原生 HTML/CSS/JavaScript
 - **数据抓取**: Cheerio + Axios
+- **定时调度**: node-cron
 - **GitHub API**: @octokit/rest + @octokit/graphql
-- **翻译**: DeepSeek AI
+- **翻译 & 摘要**: DeepSeek V4 / GLM / MiniMax / 硅基流动 / OpenRouter
+- **数据库**: PostgreSQL
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.6.0 (2026-05-06)
+- 📝 **每日 AI 深度报告** — 每天自动生成日报，AI 逐项目阅读 README 并撰写中文简介
+- 💾 **简介 30 天缓存** — `repo_summaries` 表，同一仓库 30 天内复用已生成的简介
+- 🤖 **多 AI 供应商支持** — 新增 GLM / MiniMax / 硅基流动 / OpenRouter，Web 界面自由切换
+- 🔄 **翻译体验升级** — 自上而下有序翻译，闪光动画（shimmer）反馈进度，失败项波浪下划线标记
+- ⏰ **定时自动抓取** — node-cron 每日 3 次自动抓取榜单入库，补齐数据缺口
+- 📊 **周报/月报增强** — 引用每日 AI 简介，趋势分析更精准
+- 🧩 **新增模块** — `scheduler.js`（定时调度）、`summarizer.js`（README 摘要）
+- 🐛 修复 DeepSeek V4 Flash 翻译空响应（max_tokens 100→300）
+- 🐛 修复 reasoning_content 混入输出内容的 Bug
+- 🐛 修复 Docker 部署 volume 缺失导致配置丢失
+- 🧪 26 个测试全通过
 
 ### v1.5.0 (2026-04-16)
 - ⭐ Star 页签重新设计为仪表盘风格：卡片网格 + 摘要统计栏
