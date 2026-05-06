@@ -253,37 +253,36 @@ async function generateDailyReport(report) {
 
   const displayDate = new Date(periodDate).toISOString().split('T')[0];
 
-  const prompt = `你是一位资深技术趋势分析师。以下是 ${displayDate} GitHub Trending 日榜的前 ${repoData.length} 名项目数据。
+  const top10 = repoData.slice(0, 10);
 
-请撰写一份技术情报简报，用 Markdown 输出，结构如下：
+  const prompt = `你是一位资深技术趋势分析师。以下是 ${displayDate} GitHub Trending 日榜前 10 名项目数据。
+
+请撰写一份技术情报简报，用 Markdown。必须完整输出以下四个章节，缺一不可：
 
 ## 🔬 今日信号
-一段 180 字以内自然叙述，指出今天热榜的核心叙事——什么主题在升温、什么方向在退潮、有没有意想不到的项目。不列清单，写成一个完整段落。
+一段 150 字以内自然叙述，指出今天热榜的核心叙事——什么主题在升温、有什么意想不到的项目。写成完整段落，不列清单。
 
 ## 🏆 前 10 名
-列出前 10 名，每个项目格式：
-**N. owner/repo** · ⭐ +todayStars 今日（总 totalStars）· streak信息
-> 一句话定性判断（你在阅读数据后的判断，不是复述简介）
-> 技术看点：从 summary 中提取 1-2 个具体的技术亮点
+每个项目格式（10 个都要写）：
+**N. owner/repo** · ⭐ +todayStars（总 totalStars）· streak
+> 定性判断（你读数据后的见解，不复制摘要）
+> 技术看点：1-2 个具体亮点
 
 ## 💡 值得深看
-从全部项目中挑 2-3 个你认为最值得花时间了解的，格式：
+挑 2-3 个最值得花时间的项目：
 **owner/repo**
-- 关注理由（2-3句，结合技术特色、竞争格局、我的判断）
-- 建议关注什么（看源码、看某个 issue、关注某位作者等）
+- 关注理由
+- 建议关注什么
 
 ## ⏱ 一刻钟速览
-如果你只有 15 分钟：打开哪 3 个项目（给出 repo 名 + 一句话理由 + 链接）
+打开这 3 个：repo 名 + 一句话理由 + 链接
 
-要求：专业、客观、有判断力。不输出"我们分析""根据数据"之类的前缀。
+禁止输出"我们分析""根据数据""作为分析师"等前缀。直接写内容。
 
-以下是项目数据：
-${repoData.map(r =>
-  `${r.rank}. ${r.repo} (${r.language || '未知语言'})
-   总星标 ${r.totalStars.toLocaleString()} · 今日 +${r.todayStars.toLocaleString()}
-   ${r.streak}
-   项目简介：${r.description || '无'}
-   AI 摘要：${r.summary || '无'}`
+${top10.map(r =>
+  `${r.rank}. ${r.repo} (${r.language || '未知'})
+   ⭐ +${r.todayStars.toLocaleString()}（总 ${r.totalStars.toLocaleString()}）· ${r.streak}
+   摘要：${r.summary || r.description || '无'}`
 ).join('\n\n')}`;
 
   // 5. Call AI
@@ -296,7 +295,7 @@ ${repoData.map(r =>
       `${provider.preset.baseUrl}${provider.preset.chatPath}`,
       {
         model: provider.model,
-        max_tokens: 4000,
+        max_tokens: 6000,
         messages: [{ role: 'user', content: prompt }],
       },
       {
