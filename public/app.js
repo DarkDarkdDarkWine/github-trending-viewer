@@ -608,8 +608,21 @@ async function openReport(id) {
         const end = String(r.period_end).split('T')[0];
         const typeLabel = REPORT_TYPE_LABEL[r.report_type] || r.report_type;
 
+        const isDaily = r.report_type === 'daily';
+
         const topReposHtml = (stats.top_repos || []).map((repo, i) => {
             const desc = repo.description ? ` data-tooltip="${escapeAttr(repo.description)}"` : '';
+            if (isDaily) {
+                // Daily: simplified table without appearances/peak-rank columns
+                return `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><a href="https://github.com/${escapeAttr(repo.author)}/${escapeAttr(repo.name)}" target="_blank" rel="noopener" class="repo-link"${desc}>${escapeHtml(repo.author)}/${escapeHtml(repo.name)}</a></td>
+                    <td>${escapeHtml(repo.language || '-')}</td>
+                    <td>+${Number(repo.avg_period_stars).toLocaleString()}</td>
+                </tr>
+                `;
+            }
             return `
             <tr>
                 <td>${i + 1}</td>
@@ -622,16 +635,22 @@ async function openReport(id) {
         `;
         }).join('');
 
-        const langHtml = (stats.language_distribution || []).map(l => {
-            const pct = Math.round(l.pct);
-            return `
-                <div class="lang-bar-row">
-                    <span class="lang-name">${escapeHtml(l.language)}</span>
-                    <div class="lang-bar-track"><div class="lang-bar-fill" style="width:${Math.min(pct * 2, 100)}%"></div></div>
-                    <span class="lang-pct">${l.pct}%</span>
-                </div>
-            `;
-        }).join('');
+        const langDist = stats.language_distribution || [];
+        const langSection = langDist.length > 0
+            ? `<div class="report-section">
+                <h3>语言分布</h3>
+                <div class="lang-bars">${langDist.map(l => {
+                    const pct = Math.round(l.pct);
+                    return `
+                        <div class="lang-bar-row">
+                            <span class="lang-name">${escapeHtml(l.language)}</span>
+                            <div class="lang-bar-track"><div class="lang-bar-fill" style="width:${Math.min(pct * 2, 100)}%"></div></div>
+                            <span class="lang-pct">${l.pct}%</span>
+                        </div>
+                    `;
+                }).join('')}</div>
+            </div>`
+            : '';
 
         const mdHtml = r.content_md
             ? (typeof marked !== 'undefined' ? marked.parse(r.content_md) : `<pre>${escapeHtml(r.content_md)}</pre>`)
@@ -647,19 +666,19 @@ async function openReport(id) {
             </div>
 
             <div class="report-section">
-                <h3>Top 项目</h3>
+                <h3>${isDaily ? '当日项目' : 'Top 项目'}</h3>
                 <div class="report-table-wrap">
                     <table class="report-table">
-                        <thead><tr><th>#</th><th>项目</th><th>语言</th><th>上榜次数</th><th>最高排名</th><th>平均新增 Stars</th></tr></thead>
+                        <thead><tr>
+                            <th>#</th><th>项目</th><th>语言</th>
+                            ${isDaily ? '<th>本日新增 Stars</th>' : '<th>上榜次数</th><th>最高排名</th><th>平均新增 Stars</th>'}
+                        </tr></thead>
                         <tbody>${topReposHtml}</tbody>
                     </table>
                 </div>
             </div>
 
-            <div class="report-section">
-                <h3>语言分布</h3>
-                <div class="lang-bars">${langHtml}</div>
-            </div>
+            ${langSection}
 
             <div class="report-section report-markdown">
                 <h3>AI 分析</h3>

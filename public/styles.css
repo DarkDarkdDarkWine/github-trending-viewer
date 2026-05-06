@@ -5,13 +5,15 @@
 }
 
 :root {
-    --primary-color: #0969da;
-    --secondary-color: #656d76;
+    --primary-color: #58a6ff;
+    --accent-color: #3fb950;
+    --secondary-color: #8b949e;
     --background: #0d1117;
     --card-background: #161b22;
     --border-color: #30363d;
-    --text-primary: #e6edf3;
-    --text-secondary: #7d8590;
+    --text-primary: #f0f6fc;
+    --text-secondary: #8b949e;
+    --link-color: #58a6ff;
     --success-color: #3fb950;
     --warning-color: #d29922;
     --danger-color: #f85149;
@@ -41,7 +43,7 @@ header {
 header h1 {
     font-size: 2.5rem;
     margin-bottom: 0.5rem;
-    background: linear-gradient(90deg, #0969da, #3fb950);
+    background: linear-gradient(90deg, #58a6ff, #3fb950);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -185,7 +187,7 @@ select:focus {
 .repo-card:hover {
     border-color: var(--primary-color);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(9, 105, 218, 0.15);
+    box-shadow: 0 8px 24px rgba(88, 166, 255, 0.12);
 }
 
 .repo-header {
@@ -228,7 +230,7 @@ select:focus {
 }
 
 .repo-title a:hover {
-    color: var(--primary-color);
+    color: var(--link-color);
 }
 
 .repo-language {
@@ -622,12 +624,11 @@ select:focus {
 }
 
 .report-section h3 {
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 0.95rem;
+    font-weight: 600;
     margin-bottom: 1rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
 }
 
 .report-table-wrap {
@@ -655,7 +656,7 @@ select:focus {
 }
 
 .report-table td a {
-    color: var(--primary-color);
+    color: var(--link-color);
     text-decoration: none;
 }
 
@@ -712,23 +713,48 @@ select:focus {
 /* Markdown 正文 */
 .markdown-body {
     color: var(--text-primary);
-    line-height: 1.75;
+    line-height: 1.8;
     font-size: 0.95rem;
 }
 
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
-    margin: 1.5rem 0 0.75rem;
+    margin: 2rem 0 1rem;
     color: var(--text-primary);
+    font-weight: 600;
 }
 
-.markdown-body p { margin-bottom: 1rem; }
+.markdown-body h2 { font-size: 1.25rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border-color); }
+.markdown-body h3 { font-size: 1.05rem; }
+
+.markdown-body p { margin-bottom: 1.1rem; }
+
+.markdown-body a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+.markdown-body a:hover { text-decoration: underline; }
+
+.markdown-body strong { color: #f0f6fc; font-weight: 600; }
 
 .markdown-body ul, .markdown-body ol {
     padding-left: 1.5rem;
     margin-bottom: 1rem;
 }
 
-.markdown-body li { margin-bottom: 0.3rem; }
+.markdown-body li { margin-bottom: 0.4rem; }
+
+.markdown-body blockquote {
+    border-left: 3px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    margin: 1rem 0;
+    color: var(--text-secondary);
+}
+
+.markdown-body hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 2rem 0;
+}
 
 .markdown-body table {
     width: 100%;
@@ -740,16 +766,26 @@ select:focus {
 }
 
 .markdown-body th {
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.85rem;
     background: rgba(48, 54, 61, 0.5);
     border: 1px solid var(--border-color);
     text-align: left;
     font-weight: 600;
+    color: #f0f6fc;
 }
 
 .markdown-body td {
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.85rem;
     border: 1px solid var(--border-color);
+    color: #e6edf3;
+}
+
+.markdown-body code {
+    background: rgba(48, 54, 61, 0.8);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.875em;
+    color: #f0f6fc;
 }
 
 /* Repo link tooltip — rendered via JS into body, no clipping */
@@ -770,13 +806,7 @@ select:focus {
     z-index: 9999;
 }
 
-.markdown-body strong { color: var(--text-primary); font-weight: 700; }
-.markdown-body code {
-    background: rgba(48, 54, 61, 0.7);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-size: 0.875em;
-}
+
 
 /* ─── AI 设置 ──────────────────────────────────────────────────── */
 
