@@ -363,43 +363,94 @@ async function translateBatch(texts) {
   }
 }
 
-// 生成报告（支持联网搜索）
+// 生成报告（周报/月报，支持联网搜索）
 async function generateReport(stats, reportType) {
   const provider = await getProviderForFeature('report');
   if (!provider) throw new Error('No AI provider configured for report generation');
 
   const { preset, apiKey, model, webSearch } = provider;
-  const label = reportType === 'weekly' ? '周' : '月';
+  const isWeekly = reportType === 'weekly';
+  const label = isWeekly ? '周' : '月';
+  const maxTokens = isWeekly ? 6000 : 10000;
+
+  // Build daily appearance data if available
+  const dailyBreakdown = (stats.daily_counts && stats.daily_counts.length > 0)
+    ? `\n每日上榜数量变化：\n${stats.daily_counts.map(d => `  ${d.date}: 日榜${d.daily}个 周榜${d.weekly}个 月榜${d.monthly}个`).join('\n')}`
+    : '';
 
   const statsText = [
     `时间范围：${stats.period_start} 至 ${stats.period_end}`,
     `总上榜次数：${stats.total_appearances}，独立项目数：${stats.unique_repos}`,
+    dailyBreakdown,
     '',
-    'Top 15 最活跃项目：',
+    'Top 15 最活跃项目（含 AI 摘要）：',
     ...stats.top_repos.map((r, i) => {
-      let line = `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）- 上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank} 名，平均新增 ${r.avg_period_stars} stars`;
+      let line = `${i + 1}. ${r.author}/${r.name}（${r.language || '未知'}）`;
+      line += `\n   上榜 ${r.appearances} 次，最高排名第 ${r.peak_rank}，首次上榜 ${r.first_seen || '—'}，最近上榜 ${r.last_seen || '—'}，日均新增 ${r.avg_period_stars} stars`;
       if (r.ai_summary) {
-        line += `\n   简介：${r.ai_summary}`;
+        line += `\n   AI 摘要：${r.ai_summary}`;
       } else if (r.description) {
         line += `\n   简介：${r.description}`;
       }
       return line;
     }),
     '',
-    '编程语言分布（Top 5）：',
-    ...stats.language_distribution.slice(0, 5).map(l =>
-      `- ${l.language}: ${l.count} 次出现 (${l.pct}%)`
+    '编程语言分布（Top 10）：',
+    ...stats.language_distribution.slice(0, 10).map(l =>
+      `- ${l.language}: ${l.count} 次 (${l.pct}%)`
     )
   ].join('\n');
 
+  // Different prompts for weekly vs monthly
+  const role = `你是一位资深开源技术趋势分析师，擅长从 GitHub 数据中识别技术范式的迁移。`;
+  const requirements = isWeekly
+    ? `请撰写一份 ${label}度趋势周评（Markdown），结构如下：
+
+## 📊 核心信号（3-5条）
+每条一个核心判断 + 数据支撑。不是复述数据，是说出数据背后的含义。
+示例："Agent 编排从实验走向工程化 —— 本周 3 个编排框架同时上榜，且排名持续攀升，说明社区正在寻找比 LangChain 更轻量的替代方案。"
+
+## 🔍 升温方向
+哪些领域在本周明显加速（频次增加、新项目闯入、语言分布变化）？各用一段话分析，含具体项目佐证。
+
+## 📉 降温信号
+哪些主题在退潮或增速放缓？客观描述，不说套话。
+
+## 🏗 值得关注的新面孔
+本周首次上榜的项目中，挑 2-3 个分析其潜力和限制。
+
+## 🔮 下周看点
+基于当前趋势，预测下周可能的方向。要求具体（指出某个项目、某个事件、某个技术方向），不空泛。
+`
+    : `请撰写一份 ${label}度战略趋势综述（Markdown），结构如下：
+
+## 📊 本月格局（5-8条核心判断）
+从全局视角总结本月的技术生态变化。每条判断必须有数据或项目案例支撑。涵盖：什么方向在崛起、什么在成熟、什么在退潮、什么出乎意料。
+
+## 🔬 深度专题：<自选一个本月最值得展开的主题>
+选本月最核心的一条主线做 300-400 字的专题分析。示例主题："Agent 编排框架的战国时代""Rust 正在吞噬 AI 工具链""开源替代品的商业化临界点"。要求有观点、有对比、有判断。
+
+## 🏆 本月之星（3-5个）
+最具影响力的项目，每个用一段话分析：
+- 为什么它重要（不只是数据好，要讲清楚它在技术生态中的位置）
+- 局限和风险（保持批判性，不要只夸）
+- 下一步看什么
+
+## 🌐 语言与生态
+结合语言分布数据，分析不同技术栈的活跃度变化趋势，解释变化背后的可能原因。
+
+## 🔮 未来三个月
+超越数据本身，给出 2-3 个未来三个月可能出现的技术趋势前瞻。要求有逻辑推演，不只是猜测。
+`;
+
   const body = {
     model,
-    max_tokens: 4000,
+    max_tokens: maxTokens,
     messages: [{
       role: 'user',
       content: webSearch
-        ? `你是一位开源技术趋势分析师。以下是 GitHub Trending ${label}报告（${stats.period_start} 至 ${stats.period_end}）的统计数据：\n\n${statsText}\n\n请先通过搜索了解以上热门项目的技术背景、近期版本发布和社区动态，然后撰写深度分析报告。要求：\n1. 基于搜索到的真实信息解释热点成因（框架发布、公司动态、热点事件等）\n2. 分析社区注意力的变化方向和演进轨迹\n3. 用 Markdown 格式输出，可包含表格，不要包含代码块\n4. 报告结构：核心洞察（3-5条）→ 详细分析 → 趋势展望\n5. 语言：中文，专业但易读`
-        : `你是一位开源技术趋势分析师。以下是 GitHub Trending ${label}报告（${stats.period_start} 至 ${stats.period_end}）的统计数据：\n\n${statsText}\n\n请撰写一份深度分析报告，要求：\n1. 结合近期技术圈背景（框架发布、公司动态、热点事件等）解释热点成因\n2. 分析社区注意力的变化方向和演进轨迹\n3. 用 Markdown 格式输出，可包含表格，不要包含代码块\n4. 报告结构：核心洞察（3-5条）→ 详细分析 → 趋势展望\n5. 语言：中文，专业但易读`
+        ? `${role}\n以下是 GitHub Trending ${label}报告数据（${stats.period_start} ~ ${stats.period_end}）：\n\n${statsText}\n\n请先搜索了解关键项目的近期动态（版本发布、公司新闻、社区事件），然后按以下要求撰写报告。禁止输出"根据数据""我们分析""从统计来看"等前缀句，直接写内容。\n\n${requirements}`
+        : `${role}\n以下是 GitHub Trending ${label}报告数据（${stats.period_start} ~ ${stats.period_end}）：\n\n${statsText}\n\n请按以下要求撰写报告。禁止输出"根据数据""我们分析""从统计来看"等前缀句，直接写内容。\n\n${requirements}`
     }],
   };
 
