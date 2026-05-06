@@ -111,14 +111,14 @@ async function callAIForSummary(owner, name, readmeText) {
 
   const { preset, apiKey, model } = provider;
 
-  const prompt = `根据以下 GitHub 项目的 README，用一句中文概括该项目（不超过80字）：\n\n项目 ${owner}/${name} 的 README：\n${readmeText}\n\n一句话概括：`;
+  const prompt = `阅读以下 GitHub 项目的 README，用 2-3 句中文介绍这个项目：\n1. 它是什么，解决什么问题\n2. 有什么关键特性或亮点\n\n项目 ${owner}/${name} 的 README：\n${readmeText}\n\n介绍：`;
 
   try {
     const response = await require('axios').post(
       `${preset.baseUrl}${preset.chatPath}`,
       {
         model,
-        max_tokens: 200,
+        max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       },
       {

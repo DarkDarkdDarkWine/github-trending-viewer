@@ -187,19 +187,20 @@ async function callAI(stats, reportType) {
   return aiProvider.generateReport(stats, reportType);
 }
 
-// ─── Daily report: per-repo AI summaries ──────────────────────────────────
+// ─── Daily report: AI-synthesized intelligence briefing ────────────────────
 
 async function generateDailyReport(report) {
   console.log(`Generating daily report: ${report.period_start}`);
   const periodDate = report.period_start;
 
-  // Get the daily trending repos from DB
+  // 1. Get today's trending repos from DB
   const res = await db.query(
     `SELECT rp.author, rp.name, rp.description, rp.language, rp.stars, rp.period_stars, rp.rank
      FROM trending_repos rp
      JOIN trending_records r ON r.id = rp.record_id
      WHERE r.collect_date = $1 AND r.since = 'daily'
-     ORDER BY rp.rank`,
+     ORDER BY rp.rank
+     LIMIT 15`,
     [periodDate]
   );
 
@@ -210,49 +211,134 @@ async function generateDailyReport(report) {
 
   const repos = res.rows.map(r => ({ owner: r.author, name: r.name }));
 
-  // Generate AI summaries (uses 30-day cache)
-  const summaries = await ensureSummaries(repos);
+  // 2. Check if any of these repos appeared in the previous 7 days
+  const sevenDaysAgo = new Date(periodDate);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const prevDateStr = sevenDaysAgo.toISOString().split('T')[0];
 
-  // Build report content
-  // Format date as YYYY-MM-DD regardless of input format (Date object or string)
-  const displayDate = new Date(periodDate).toISOString().split('T')[0];
-
-  const lines = [
-    `# 📅 GitHub Trending 日报`,
-    ``,
-    `**日期**：${displayDate}`,
-    ``,
-    `---`,
-    ``
-  ];
-
-  res.rows.forEach((r) => {
-    const key = `${r.author}/${r.name}`;
-    const summary = summaries.get(key) || '';
-    const lang = r.language ? ` \`${r.language}\`` : '';
-
-    lines.push(`## ${r.rank}. [${r.author}/${r.name}](https://github.com/${r.author}/${r.name})${lang}`);
-    lines.push('');
-    lines.push(`⭐ ${Number(r.stars).toLocaleString()} 总星标 · 📈 +${Number(r.period_stars).toLocaleString()} 本日新增`);
-    lines.push('');
-
-    if (r.description) {
-      lines.push(`> ${r.description}`);
-      lines.push('');
-    }
-
-    if (summary) {
-      lines.push(`📝 ${summary}`);
-    } else {
-      lines.push(`*暂无 AI 简介*`);
-    }
-    lines.push('');
-    lines.push('---');
-    lines.push('');
+  const prevRes = await db.query(
+    `SELECT rp.author, rp.name, rp.rank, r.collect_date
+     FROM trending_repos rp
+     JOIN trending_records r ON r.id = rp.record_id
+     WHERE r.collect_date >= $1 AND r.collect_date < $2 AND r.since = 'daily'`,
+    [prevDateStr, periodDate]
+  );
+  const prevAppearances = {};
+  prevRes.rows.forEach(r => {
+    const k = `${r.author}/${r.name}`;
+    if (!prevAppearances[k]) prevAppearances[k] = { count: 0, best_rank: 99 };
+    prevAppearances[k].count++;
+    prevAppearances[k].best_rank = Math.min(prevAppearances[k].best_rank, r.rank);
   });
 
-  const contentMd = lines.join('\n');
+  // 3. Generate per-repo AI summaries (30-day cache)
+  const summaries = await ensureSummaries(repos);
 
+  // 4. Build structured data for AI synthesis
+  const repoData = res.rows.map(r => {
+    const key = `${r.author}/${r.name}`;
+    const prev = prevAppearances[key];
+    const summary = summaries.get(key) || '';
+    return {
+      rank: r.rank,
+      repo: key,
+      language: r.language || '',
+      totalStars: Number(r.stars),
+      todayStars: Number(r.period_stars),
+      description: r.description || '',
+      summary,
+      streak: prev ? `近7天上榜${prev.count}次，最佳排名第${prev.best_rank}` : '近7天首次上榜',
+    };
+  });
+
+  const displayDate = new Date(periodDate).toISOString().split('T')[0];
+
+  const prompt = `你是一位资深技术趋势分析师。以下是 ${displayDate} GitHub Trending 日榜的前 ${repoData.length} 名项目数据。
+
+请撰写一份技术情报简报，用 Markdown 输出，结构如下：
+
+## 🔬 今日信号
+一段 180 字以内自然叙述，指出今天热榜的核心叙事——什么主题在升温、什么方向在退潮、有没有意想不到的项目。不列清单，写成一个完整段落。
+
+## 🏆 前 10 名
+列出前 10 名，每个项目格式：
+**N. owner/repo** · ⭐ +todayStars 今日（总 totalStars）· streak信息
+> 一句话定性判断（你在阅读数据后的判断，不是复述简介）
+> 技术看点：从 summary 中提取 1-2 个具体的技术亮点
+
+## 💡 值得深看
+从全部项目中挑 2-3 个你认为最值得花时间了解的，格式：
+**owner/repo**
+- 关注理由（2-3句，结合技术特色、竞争格局、我的判断）
+- 建议关注什么（看源码、看某个 issue、关注某位作者等）
+
+## ⏱ 一刻钟速览
+如果你只有 15 分钟：打开哪 3 个项目（给出 repo 名 + 一句话理由 + 链接）
+
+要求：专业、客观、有判断力。不输出"我们分析""根据数据"之类的前缀。
+
+以下是项目数据：
+${repoData.map(r =>
+  `${r.rank}. ${r.repo} (${r.language || '未知语言'})
+   总星标 ${r.totalStars.toLocaleString()} · 今日 +${r.todayStars.toLocaleString()}
+   ${r.streak}
+   项目简介：${r.description || '无'}
+   AI 摘要：${r.summary || '无'}`
+).join('\n\n')}`;
+
+  // 5. Call AI
+  let contentMd;
+  try {
+    const provider = await aiProvider.getProviderForFeature('report');
+    if (!provider) throw new Error('No AI provider configured');
+
+    const response = await require('axios').post(
+      `${provider.preset.baseUrl}${provider.preset.chatPath}`,
+      {
+        model: provider.model,
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${provider.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 180000,
+      }
+    );
+    contentMd = response.data.choices?.[0]?.message?.content?.trim();
+    if (!contentMd) throw new Error('Empty AI response');
+
+    // Prepend title
+    contentMd = `# 📰 GitHub 技术情报 · ${displayDate}\n\n---\n\n${contentMd}`;
+  } catch (err) {
+    console.error(`Daily report AI failed: ${err.message}`);
+    // Fallback: build a simple list from summaries
+    const lines = [
+      `# 📰 GitHub 技术情报 · ${displayDate}`,
+      '',
+      '> ⚠️ AI 分析生成失败，以下为基础数据',
+      '',
+      '---',
+      ''
+    ];
+    res.rows.forEach(r => {
+      const key = `${r.author}/${r.name}`;
+      const s = summaries.get(key) || r.description || '';
+      lines.push(`## ${r.rank}. [${r.author}/${r.name}](https://github.com/${r.author}/${r.name}) \`${r.language || ''}\``);
+      lines.push('');
+      lines.push(`⭐ ${Number(r.stars).toLocaleString()} · 📈 +${Number(r.period_stars).toLocaleString()}`);
+      lines.push('');
+      if (s) lines.push(`${s}`);
+      lines.push('');
+      lines.push('---');
+      lines.push('');
+    });
+    contentMd = lines.join('\n');
+  }
+
+  // 6. Store stats (preserve top_repos with summaries for weekly/monthly use)
   const stats = {
     period_start: periodDate,
     period_end: periodDate,
@@ -272,7 +358,7 @@ async function generateDailyReport(report) {
   };
 
   await db.markReportDone(report.id, contentMd, stats);
-  console.log(`Daily report ${report.id} done (${res.rows.length} repos, ${summaries.size} summaries)`);
+  console.log(`Daily report ${report.id} done`);
   return { id: report.id, success: true };
 }
 
