@@ -6,9 +6,10 @@
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
+const secretVault = require('./src/crypto/secret-vault');
 
-const CONFIG_FILE = path.join(__dirname, 'data', 'ai-providers.json');
-const TASK_FILE = path.join(__dirname, 'data', 'ai-task-assign.json');
+const CONFIG_FILE = process.env.AI_PROVIDERS_FILE || path.join(__dirname, 'data', 'ai-providers.json');
+const TASK_FILE = process.env.AI_TASK_ASSIGN_FILE || path.join(__dirname, 'data', 'ai-task-assign.json');
 
 // 任务分配缓存：{ translate: 'deepseek', report: 'glm' }
 let taskAssign = null;
@@ -89,8 +90,12 @@ async function loadProviders() {
   if (configuredProviders) return configuredProviders;
   try {
     const data = await fs.readFile(CONFIG_FILE, 'utf8');
-    configuredProviders = JSON.parse(data);
-  } catch {
+    configuredProviders = JSON.parse(data).map(provider => ({
+      ...provider,
+      apiKey: decryptProviderKey(provider.apiKey)
+    }));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
     configuredProviders = [];
   }
   return configuredProviders;
@@ -98,7 +103,11 @@ async function loadProviders() {
 
 async function saveProviders() {
   await ensureDataDir();
-  await fs.writeFile(CONFIG_FILE, JSON.stringify(configuredProviders, null, 2));
+  const providersForDisk = (configuredProviders || []).map(provider => ({
+    ...provider,
+    apiKey: encryptProviderKey(provider.apiKey)
+  }));
+  await fs.writeFile(CONFIG_FILE, JSON.stringify(providersForDisk, null, 2));
 }
 
 async function loadTaskAssign() {
@@ -139,7 +148,8 @@ async function getPresets() {
       lastTested: configured ? configured.lastTested : null,
       selectedModels: configured?.selectedModels || preset.defaultModels,
       cachedModels: configured?.cachedModels || null,
-      apiKey: configured?.apiKey || '',
+      hasApiKey: !!configured?.apiKey,
+      apiKey: '',
     };
   });
 }
@@ -153,10 +163,13 @@ async function upsertProvider(id, apiKey) {
   const existing = providers.find(p => p.id === id);
 
   if (existing) {
-    existing.apiKey = apiKey;
-    existing.status = 'untested';
-    existing.lastTested = null;
+    if (apiKey) {
+      existing.apiKey = apiKey;
+      existing.status = 'untested';
+      existing.lastTested = null;
+    }
   } else {
+    if (!apiKey) throw new Error('API key not provided');
     providers.push({
       id,
       apiKey,
@@ -169,6 +182,17 @@ async function upsertProvider(id, apiKey) {
 
   await saveProviders();
   return { id, status: 'untested' };
+}
+
+function decryptProviderKey(apiKey) {
+  if (!apiKey) return apiKey;
+  return secretVault.decrypt(apiKey);
+}
+
+function encryptProviderKey(apiKey) {
+  if (!apiKey || secretVault.isEncrypted(apiKey)) return apiKey;
+  if (!secretVault.canEncrypt()) return apiKey;
+  return secretVault.encrypt(apiKey);
 }
 
 // 更新供应商的模型选择

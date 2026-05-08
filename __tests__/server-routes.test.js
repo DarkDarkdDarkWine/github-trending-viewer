@@ -31,7 +31,8 @@ jest.mock('axios', () => ({
 // Mock db module
 jest.mock('../db', () => ({
   saveTrendingData: jest.fn().mockResolvedValue({}),
-  ensureReportsSchema: jest.fn().mockResolvedValue()
+  ensureReportsSchema: jest.fn().mockResolvedValue(),
+  getPreviousRanking: jest.fn().mockResolvedValue(null)
 }));
 
 jest.mock('../analyzer', () => ({

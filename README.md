@@ -1,4 +1,4 @@
-# GitHub Trending Viewer v1.6.0
+# GitHub Trending Viewer v1.7.0
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
 
@@ -15,6 +15,7 @@
 - **每日 AI 解读** - 每天自动生成日报，AI 阅读每个仓库的 README 后撰写一句话中文简介
 - **简介缓存** - 30 天内同一仓库复用已生成的简介，节省 AI Token 消耗
 - **多供应商支持** - DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter，可自由分配翻译和报告任务
+- **API Key 加密存储** - AI Provider Key 使用 AES-256-GCM 加密落盘，前端只显示配置状态
 
 ### ⭐ Star 相关
 - **Star 状态显示** - 显示你是否已 Star 该项目
@@ -80,10 +81,22 @@ docker compose up -d --build
 # .env 文件
 GITHUB_TOKEN=ghp_your_token_here       # GitHub API（Star 状态、README 获取）
 DATABASE_URL=postgresql://...           # PostgreSQL（报告存储、简介缓存）
+ENCRYPTION_KEY=...                      # 32 字节 base64，用于加密 AI Provider Key
 ```
 
 - GitHub Token: https://github.com/settings/tokens (需要 `public_repo` 或 `user` 权限)
 - AI API Key 通过 Web 界面「AI 设置」页签配置，支持多供应商
+- 生成加密密钥：`npm run gen-key`
+
+### 升级到 v1.7.0
+
+```bash
+npm run migrate:ranking
+npm run migrate:encrypt-keys
+docker compose up -d --build
+```
+
+升级前建议先备份 `data/` 目录。`migrate:ranking` 会把旧 `data/ranking-history.json` 写入 PostgreSQL；验证完成后可删除该 JSON 文件。
 
 ### AI 供应商配置
 

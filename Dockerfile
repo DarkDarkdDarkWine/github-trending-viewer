@@ -17,6 +17,8 @@ COPY analyzer.js ./
 COPY ai-provider.js ./
 COPY summarizer.js ./
 COPY scheduler.js ./
+COPY src ./src
+COPY scripts ./scripts
 COPY public ./public
 
 # Expose port
@@ -24,7 +26,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/trending?since=daily', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+  CMD node -e "require('http').get('http://localhost:3000/', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
 
 # Start the application
 CMD ["node", "server.js"]

@@ -98,6 +98,33 @@ async function saveTrendingData(repos, since) {
   }
 }
 
+async function getPreviousRanking(since, todayDate) {
+  const p = getPool();
+  if (!p) return null;
+
+  const recordRes = await p.query(
+    `SELECT id
+     FROM trending_records
+     WHERE since = $1
+       AND collect_date < $2
+     ORDER BY collect_date DESC, id DESC
+     LIMIT 1`,
+    [since, todayDate]
+  );
+
+  const recordId = recordRes.rows[0]?.id;
+  if (!recordId) return null;
+
+  const reposRes = await p.query(
+    `SELECT rank, author, name
+     FROM trending_repos
+     WHERE record_id = $1
+     ORDER BY rank ASC`,
+    [recordId]
+  );
+  return reposRes.rows;
+}
+
 // 建报告表（幂等）
 async function ensureReportsSchema() {
   const p = getPool();
@@ -271,6 +298,7 @@ async function query(sql, params) {
 module.exports = {
   testConnection,
   saveTrendingData,
+  getPreviousRanking,
   ensureReportsSchema,
   getOrCreateReport,
   markReportDone,

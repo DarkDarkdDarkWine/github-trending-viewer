@@ -156,6 +156,7 @@ const repositoriesEl = document.getElementById('repositories');
 
 let currentRepos = [];
 let starredStatus = {};
+let currentTrendingMeta = null;
 
 // Star filter button for Trending page
 const starredFilterBtn = document.getElementById('starredFilterBtn');
@@ -289,6 +290,7 @@ async function fetchTrending() {
         }
 
         currentRepos = result.data;
+        currentTrendingMeta = result.meta || null;
         displayRepositories(currentRepos);
         updateStats(currentRepos.length);
 
@@ -343,7 +345,11 @@ function displayRepositories(repos) {
         return;
     }
 
-    repositoriesEl.innerHTML = repos
+    const staleBanner = currentTrendingMeta?.stale
+        ? `<div class="stale-banner">抓取异常，正在显示 ${formatTimeAgo(currentTrendingMeta.lastSuccess)} 的缓存数据</div>`
+        : '';
+
+    repositoriesEl.innerHTML = staleBanner + repos
         .map((repo, index) => createRepoCard(repo, index + 1))
         .join('');
 }
@@ -391,6 +397,8 @@ function createRepoCard(repo, rank) {
     const authorDisplay = escapeHtml(repo.author);
     const nameDisplay = escapeHtml(repo.name);
     const languageDisplay = repo.language ? escapeHtml(repo.language) : '';
+
+    const keyPlaceholder = provider.hasApiKey ? '已配置 (••••)，留空则保留' : '输入 API Key...';
 
     return `
         <div class="repo-card" data-repo-index="${rank - 1}">
@@ -810,7 +818,7 @@ function createProviderCard(provider) {
     ` : '';
 
     return `
-        <div class="provider-card" data-provider-id="${escapeAttr(provider.id)}">
+        <div class="provider-card" data-provider-id="${escapeAttr(provider.id)}" data-has-key="${provider.hasApiKey ? 'true' : ''}">
             <div class="provider-card-header">
                 <span class="provider-name">${escapeHtml(provider.name)}</span>
                 <span class="provider-status">
@@ -821,7 +829,7 @@ function createProviderCard(provider) {
             </div>
             <div class="provider-form">
                 <div class="key-input-wrap">
-                    <input type="password" placeholder="输入 API Key..." data-key-input="${escapeAttr(provider.id)}" value="${escapeAttr(provider.apiKey)}" autocomplete="off">
+                    <input type="password" placeholder="${escapeAttr(keyPlaceholder)}" data-key-input="${escapeAttr(provider.id)}" value="" autocomplete="off">
                     <button class="btn-toggle-key" data-action="toggle-key" data-id="${escapeAttr(provider.id)}" title="显示/隐藏">👁</button>
                 </div>
                 <button class="btn-sm btn-test" data-action="test" data-id="${escapeAttr(provider.id)}">测试连通</button>
@@ -868,7 +876,7 @@ function bindProviderEvents() {
 
             if (action === 'test') {
                 const apiKey = input.value.trim();
-                if (!apiKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
+                if (!apiKey && !card.dataset.hasKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
                 btn.disabled = true;
                 btn.textContent = '测试中...';
                 showTestResult(resultEl, 'testing', '正在连接...');
@@ -876,7 +884,7 @@ function bindProviderEvents() {
                     const res = await fetch(`${API_BASE}/api/ai-providers/test`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id, apiKey })
+                        body: JSON.stringify({ id, apiKey: apiKey || undefined })
                     });
                     const result = await res.json();
                     if (result.success && result.data.success) {
@@ -895,7 +903,7 @@ function bindProviderEvents() {
 
             if (action === 'save') {
                 const apiKey = input.value.trim();
-                if (!apiKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
+                if (!apiKey && !card.dataset.hasKey) { showTestResult(resultEl, 'error', '请输入 API Key'); return; }
                 btn.disabled = true;
                 try {
                     // 先保存 key
@@ -911,7 +919,7 @@ function bindProviderEvents() {
                         const testRes = await fetch(`${API_BASE}/api/ai-providers/test`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id, apiKey })
+                            body: JSON.stringify({ id, apiKey: apiKey || undefined })
                         });
                         const testResult = await testRes.json();
                         if (testResult.success && testResult.data.success) {
@@ -920,7 +928,7 @@ function bindProviderEvents() {
                             fetch(`${API_BASE}/api/ai-providers/models`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ id, apiKey })
+                                body: JSON.stringify({ id, apiKey: apiKey || undefined })
                             }).finally(() => setTimeout(() => loadProviders(), 600));
                         } else {
                             showTestResult(resultEl, 'error', `已保存但连接失败: ${testResult.data?.error || ''}`);

@@ -10,6 +10,7 @@
 const db = require('./db');
 const aiProvider = require('./ai-provider');
 const githubClient = require('./github-client');
+const { asyncPool } = require('./src/lib/async-pool');
 
 const README_MAX_CHARS = 3000;
 const SUMMARY_CACHE_DAYS = 30;
@@ -43,24 +44,17 @@ async function ensureSummaries(repos) {
   console.log(`[Summarizer] ${needsFetch.length}/${repos.length} repos need fresh summaries`);
 
   // 2. Fetch README + AI summarize with concurrency limit
-  for (let i = 0; i < needsFetch.length; i += CONCURRENCY) {
-    const batch = needsFetch.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.allSettled(
-      batch.map(repo => summarizeOneRepo(repo.owner, repo.name))
-    );
-
-    batchResults.forEach((result, j) => {
-      const repo = batch[j];
+  await asyncPool(CONCURRENCY, needsFetch, async (repo) => {
+    try {
+      const summary = await summarizeOneRepo(repo.owner, repo.name);
       const key = `${repo.owner}/${repo.name}`;
-      if (result.status === 'fulfilled' && result.value) {
-        results.set(key, result.value);
-      } else {
-        const err = result.status === 'rejected' ? (result.reason?.message || String(result.reason)) : 'unknown';
-        console.warn(`[Summarizer] Failed for ${key}: ${err}`);
-        results.set(key, ''); // empty string = no summary available
-      }
-    });
-  }
+      results.set(key, summary || '');
+    } catch (err) {
+      const key = `${repo.owner}/${repo.name}`;
+      console.warn(`[Summarizer] Failed for ${key}: ${err.message || String(err)}`);
+      results.set(key, '');
+    }
+  });
 
   return results;
 }

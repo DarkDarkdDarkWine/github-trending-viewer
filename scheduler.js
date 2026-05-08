@@ -1,45 +1,38 @@
 const cron = require('node-cron');
+const db = require('./db');
+const { runScheduledReports } = require('./analyzer');
+const rankingHistory = require('./src/services/ranking-history');
+const trendingCache = require('./src/services/trending-cache');
+const { scrapeTrending } = require('./src/services/trending-scraper');
 
-// All cron times are in UTC. Shanghai is UTC+8.
-// Daily trending scrape: 14:00, 18:00, 22:00 UTC → 22:00, 02:00, 06:00 CST
-// Weekly: Monday 15:00 UTC → Monday 23:00 CST
-// Monthly: 1st 15:00 UTC → 1st 23:00 CST
-
-function startScheduler(scrapeCallback) {
-  // Daily trending — scrape multiple times to ensure coverage
-  cron.schedule('0 14,18,22 * * *', async () => {
-    console.log('[Scheduler] Running daily trending scrape...');
-    try {
-      await scrapeCallback('daily');
-      console.log('[Scheduler] Daily scrape complete');
-    } catch (err) {
-      console.error('[Scheduler] Daily scrape failed:', err.message);
-    }
-  });
-
-  // Weekly trending — every Monday
-  cron.schedule('0 15 * * 1', async () => {
-    console.log('[Scheduler] Running weekly trending scrape...');
-    try {
-      await scrapeCallback('weekly');
-      console.log('[Scheduler] Weekly scrape complete');
-    } catch (err) {
-      console.error('[Scheduler] Weekly scrape failed:', err.message);
-    }
-  });
-
-  // Monthly trending — 1st of each month
-  cron.schedule('0 15 1 * *', async () => {
-    console.log('[Scheduler] Running monthly trending scrape...');
-    try {
-      await scrapeCallback('monthly');
-      console.log('[Scheduler] Monthly scrape complete');
-    } catch (err) {
-      console.error('[Scheduler] Monthly scrape failed:', err.message);
-    }
-  });
+function startScheduler() {
+  cron.schedule('0 14,18,22 * * *', () => runTrendingJob('daily'));
+  cron.schedule('0 15 * * 1', () => runTrendingJob('weekly'));
+  cron.schedule('0 15 1 * *', () => runTrendingJob('monthly'));
 
   console.log('[Scheduler] Cron jobs registered (daily: 14/18/22 UTC, weekly: Mon 15 UTC, monthly: 1st 15 UTC)');
 }
 
-module.exports = { startScheduler };
+async function runTrendingJob(since) {
+  console.log(`[Scheduler] Running ${since} trending scrape...`);
+  try {
+    const repos = await scrapeTrending(since);
+    const changes = await rankingHistory.getChanges(repos, since);
+    const reposWithChanges = repos.map((repo, index) => ({
+      ...repo,
+      rankingChange: changes[index]
+    }));
+
+    await db.saveTrendingData(repos, since);
+    trendingCache.set(since, reposWithChanges);
+    console.log(`[Scheduler] ${since} scrape complete`);
+
+    if (since === 'daily') {
+      await runScheduledReports();
+    }
+  } catch (err) {
+    console.error(`[Scheduler] ${since} scrape failed:`, err.message);
+  }
+}
+
+module.exports = { runTrendingJob, startScheduler };

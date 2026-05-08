@@ -4,23 +4,25 @@ services:
     container_name: github-trending-viewer
     restart: unless-stopped
     ports:
-      - "3003:3000"
+      - "8088:3000"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/trending?since=daily"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     networks:
-      - github-trending-network
+      - postgres-shared_default
 
 networks:
-  github-trending-network:
-    driver: bridge
+  postgres-shared_default:
+    external: true

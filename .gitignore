@@ -5,4 +5,7 @@ node_modules/
 package-lock.json
 yarn.lock
 data/
+data/ai-providers.json
+data/ai-task-assign.json
 ranking-history.json
+plan/

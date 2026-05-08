@@ -6,8 +6,8 @@
 set -e
 
 NAS_IP=${1:-"192.168.31.14"}  # 默认 NAS IP
-NAS_USER=${2:-"admin"}         # 默认用户名
-NAS_PATH="/vol1/1000/docker/github-trending"
+NAS_USER=${2:-"yt4215481"}     # 默认用户名
+NAS_PATH="/vol2/1000/docker/github-trending"
 
 echo "🚀 Deploying GitHub Trending Viewer to NAS..."
 echo "   NAS IP: $NAS_IP"
@@ -24,19 +24,20 @@ echo "📦 Syncing files to NAS..."
 rsync -avz --progress \
   --exclude 'node_modules' \
   --exclude '.git' \
+  --exclude 'plan' \
   --exclude '*.log' \
   ./ ${NAS_USER}@${NAS_IP}:${NAS_PATH}/
 
 # 在 NAS 上构建和启动容器
 echo "🐳 Building and starting Docker container..."
 ssh ${NAS_USER}@${NAS_IP} << 'EOF'
-cd /vol1/1000/docker/github-trending
+cd /vol2/1000/docker/github-trending
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
-docker-compose logs -f --tail=50
+docker-compose logs --tail=50
 EOF
 
 echo ""
 echo "✅ Deployment complete!"
-echo "🌐 Access the app at: http://${NAS_IP}:3000"
+echo "🌐 Access the app at: http://${NAS_IP}:8088"

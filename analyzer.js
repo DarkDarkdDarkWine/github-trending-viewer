@@ -1,11 +1,7 @@
 const db = require('./db');
 const aiProvider = require('./ai-provider');
 const { ensureSummaries } = require('./summarizer');
-
-// 获取上海时区的当前日期字符串 (YYYY-MM-DD)
-function getShanghaiDateStr() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-}
+const { getShanghaiDateStr } = require('./src/lib/shanghai-date');
 
 // 根据上海时区的今天，计算应该生成哪些报告
 function getReportsDueToday() {
