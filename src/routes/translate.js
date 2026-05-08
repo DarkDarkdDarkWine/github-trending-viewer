@@ -14,7 +14,7 @@ router.post('/api/translate', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   let closed = false;
-  req.on('close', () => { closed = true; });
+  res.on('close', () => { closed = true; });
 
   await streamTranslations(texts, (payload) => {
     if (!closed) res.write(`data: ${JSON.stringify(payload)}\n\n`);

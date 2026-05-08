@@ -13,6 +13,7 @@ const mockCheckStarredBatch = jest.fn();
 const mockGetStarredRepos = jest.fn();
 const mockGetStarredRepoActivityBatch = jest.fn();
 const mockGetStarredDashboard = jest.fn();
+const mockTranslate = jest.fn();
 
 jest.mock('../github-client', () => ({
   checkStarredBatch: mockCheckStarredBatch,
@@ -40,7 +41,7 @@ jest.mock('../analyzer', () => ({
 }));
 
 jest.mock('../ai-provider', () => ({
-  translate: jest.fn(),
+  translate: mockTranslate,
   getPresets: jest.fn().mockResolvedValue([]),
   upsertProvider: jest.fn(),
   removeProvider: jest.fn(),
@@ -240,5 +241,28 @@ describe('/api/starred-dashboard', () => {
     const res = await request(app).get('/api/starred-dashboard');
     expect(res.body.success).toBe(true);
     expect(res.body.data.repos).toEqual([]);
+  });
+});
+
+// ─── /api/translate ────────────────────────────────────────────────────────
+
+describe('/api/translate', () => {
+  test('streams translation events and closes the SSE response', async () => {
+    mockTranslate.mockResolvedValue('中文翻译');
+
+    const res = await request(app)
+      .post('/api/translate')
+      .send({ texts: [{ index: 0, text: 'English description' }] })
+      .buffer(true)
+      .parse((response, callback) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', chunk => { body += chunk; });
+        response.on('end', () => callback(null, body));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('data: {"index":0,"translation":"中文翻译"}');
+    expect(mockTranslate).toHaveBeenCalledWith('English description');
   });
 });
