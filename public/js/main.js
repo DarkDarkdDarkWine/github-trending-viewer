@@ -398,8 +398,6 @@ function createRepoCard(repo, rank) {
     const nameDisplay = escapeHtml(repo.name);
     const languageDisplay = repo.language ? escapeHtml(repo.language) : '';
 
-    const keyPlaceholder = provider.hasApiKey ? '已配置 (••••)，留空则保留' : '输入 API Key...';
-
     return `
         <div class="repo-card" data-repo-index="${rank - 1}">
             <div class="repo-header">
@@ -788,6 +786,7 @@ function createProviderCard(provider) {
 
     const latencyInfo = provider.lastTested && provider.status === 'connected'
         ? `<span class="provider-latency">${new Date(provider.lastTested).toLocaleString('zh-CN')}</span>` : '';
+    const keyPlaceholder = provider.hasApiKey ? '已配置 (••••)，留空则保留' : '输入 API Key...';
 
     // 模型选择区域（仅已配置的供应商显示）
     const models = provider.selectedModels || provider.defaultModels;
