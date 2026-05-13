@@ -2,42 +2,35 @@
 
 # GitHub Trending Viewer - NAS Deployment Script
 # Usage: ./deploy-to-nas.sh [NAS_IP] [NAS_USER]
+#
+# 前提：先 git push 到 GitHub，本脚本在 NAS 上 git pull 后重建镜像。
 
 set -e
 
-NAS_IP=${1:-"192.168.31.14"}  # 默认 NAS IP
-NAS_USER=${2:-"yt4215481"}     # 默认用户名
+NAS_IP=${1:-"192.168.31.14"}
+NAS_USER=${2:-"yt4215481"}
 NAS_PATH="/vol2/1000/docker/github-trending"
 
-echo "🚀 Deploying GitHub Trending Viewer to NAS..."
-echo "   NAS IP: $NAS_IP"
-echo "   User: $NAS_USER"
-echo "   Path: $NAS_PATH"
+echo "Deploying GitHub Trending Viewer to NAS..."
+echo "  NAS: ${NAS_USER}@${NAS_IP}:${NAS_PATH}"
 echo ""
 
-# 创建 NAS 目录
-echo "📁 Creating directory on NAS..."
-ssh ${NAS_USER}@${NAS_IP} "mkdir -p ${NAS_PATH}"
+ssh ${NAS_USER}@${NAS_IP} "
+  set -e
+  cd ${NAS_PATH}
 
-# 同步文件到 NAS
-echo "📦 Syncing files to NAS..."
-rsync -avz --progress \
-  --exclude 'node_modules' \
-  --exclude '.git' \
-  --exclude 'plan' \
-  --exclude '*.log' \
-  ./ ${NAS_USER}@${NAS_IP}:${NAS_PATH}/
+  echo '--- git pull ---'
+  git pull origin main
 
-# 在 NAS 上构建和启动容器
-echo "🐳 Building and starting Docker container..."
-ssh ${NAS_USER}@${NAS_IP} << 'EOF'
-cd /vol2/1000/docker/github-trending
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-docker-compose logs --tail=50
-EOF
+  echo '--- docker compose build & up ---'
+  docker compose down
+  docker compose build --no-cache
+  docker compose up -d
+
+  echo '--- logs (tail 20) ---'
+  sleep 2
+  docker compose logs --tail=20
+"
 
 echo ""
-echo "✅ Deployment complete!"
-echo "🌐 Access the app at: http://${NAS_IP}:8088"
+echo "Done. http://${NAS_IP}:8088"
