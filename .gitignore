@@ -9,3 +9,5 @@ data/ai-providers.json
 data/ai-task-assign.json
 ranking-history.json
 plan/
+docker-compose.local.yml
+output/
