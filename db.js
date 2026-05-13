@@ -125,64 +125,106 @@ async function getPreviousRanking(since, todayDate) {
   return reposRes.rows;
 }
 
-// 建报告表（幂等）
-async function ensureReportsSchema() {
+// 初始化所有表结构（幂等，启动时调用）
+async function ensureSchema() {
   const p = getPool();
   if (!p) return;
-  try {
-    await p.query(`
-      CREATE TABLE IF NOT EXISTS analysis_reports (
-        id           SERIAL PRIMARY KEY,
-        report_type  VARCHAR(10) NOT NULL,
-        period_start DATE NOT NULL,
-        period_end   DATE NOT NULL,
-        status       VARCHAR(10) NOT NULL DEFAULT 'pending',
-        retry_count  INT NOT NULL DEFAULT 0,
-        content_md   TEXT,
-        stats_json   JSONB,
-        error_msg    TEXT,
-        generated_at TIMESTAMPTZ,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE (report_type, period_start)
-      )
-    `);
-  } catch (err) {
-    console.error('DB: ensureReportsSchema failed:', err.message);
+
+  const tables = [
+    {
+      name: 'trending_records',
+      sql: `
+        CREATE TABLE IF NOT EXISTS trending_records (
+          id           SERIAL PRIMARY KEY,
+          since        VARCHAR(10)  NOT NULL,
+          collected_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          collect_date DATE         NOT NULL DEFAULT CURRENT_DATE,
+          UNIQUE (since, collect_date)
+        )`
+    },
+    {
+      name: 'trending_repos',
+      sql: `
+        CREATE TABLE IF NOT EXISTS trending_repos (
+          id             SERIAL PRIMARY KEY,
+          record_id      INT          NOT NULL REFERENCES trending_records(id) ON DELETE CASCADE,
+          rank           INT          NOT NULL,
+          author         VARCHAR(255) NOT NULL,
+          name           VARCHAR(255) NOT NULL,
+          description    TEXT,
+          description_zh TEXT,
+          language       VARCHAR(100),
+          stars          INT          NOT NULL DEFAULT 0,
+          period_stars   INT          NOT NULL DEFAULT 0,
+          forks          INT          NOT NULL DEFAULT 0
+        )`
+    },
+    {
+      name: 'analysis_reports',
+      sql: `
+        CREATE TABLE IF NOT EXISTS analysis_reports (
+          id           SERIAL PRIMARY KEY,
+          report_type  VARCHAR(10)  NOT NULL,
+          period_start DATE         NOT NULL,
+          period_end   DATE         NOT NULL,
+          status       VARCHAR(10)  NOT NULL DEFAULT 'pending',
+          retry_count  INT          NOT NULL DEFAULT 0,
+          content_md   TEXT,
+          stats_json   JSONB,
+          error_msg    TEXT,
+          generated_at TIMESTAMPTZ,
+          created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE (report_type, period_start)
+        )`
+    },
+    {
+      name: 'repo_summaries',
+      sql: `
+        CREATE TABLE IF NOT EXISTS repo_summaries (
+          id            SERIAL PRIMARY KEY,
+          owner         VARCHAR(255) NOT NULL,
+          name          VARCHAR(255) NOT NULL,
+          summary       TEXT         NOT NULL,
+          readme_sha    VARCHAR(64),
+          summarized_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE (owner, name)
+        )`
+    },
+    {
+      name: 'app_settings',
+      sql: `
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key        VARCHAR(255) PRIMARY KEY,
+          value      JSONB        NOT NULL,
+          updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )`
+    },
+  ];
+
+  const indexes = [
+    `CREATE INDEX IF NOT EXISTS idx_trending_repos_record_id ON trending_repos (record_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_repo_summaries_owner_name ON repo_summaries (owner, name)`,
+  ];
+
+  for (const t of tables) {
+    try {
+      await p.query(t.sql);
+    } catch (err) {
+      console.error(`DB: failed to create table ${t.name}:`, err.message);
+    }
   }
-  try {
-    await p.query(`
-      CREATE TABLE IF NOT EXISTS repo_summaries (
-        id            SERIAL PRIMARY KEY,
-        owner         VARCHAR(255) NOT NULL,
-        name          VARCHAR(255) NOT NULL,
-        summary       TEXT NOT NULL,
-        readme_sha    VARCHAR(64),
-        summarized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE (owner, name)
-      )
-    `);
-    // Index for efficient cache-validation queries
-    await p.query(`CREATE INDEX IF NOT EXISTS idx_repo_summaries_owner_name ON repo_summaries (owner, name)`);
-  } catch (err) {
-    console.error('DB: ensureSummariesSchema failed:', err.message);
+  for (const idx of indexes) {
+    try {
+      await p.query(idx);
+    } catch (err) {
+      console.error('DB: failed to create index:', err.message);
+    }
   }
 }
 
-async function ensureSettingsSchema() {
-  const p = getPool();
-  if (!p) return;
-  try {
-    await p.query(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key   VARCHAR(255) PRIMARY KEY,
-        value JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-  } catch (err) {
-    console.error('DB: ensureSettingsSchema failed:', err.message);
-  }
-}
+// 向后兼容别名
+const ensureReportsSchema = ensureSchema;
+const ensureSettingsSchema = ensureSchema;
 
 async function getSetting(key) {
   const p = getPool();
@@ -332,6 +374,7 @@ module.exports = {
   testConnection,
   saveTrendingData,
   getPreviousRanking,
+  ensureSchema,
   ensureReportsSchema,
   ensureSettingsSchema,
   getSetting,

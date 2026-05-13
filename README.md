@@ -88,6 +88,18 @@ ENCRYPTION_KEY=...                      # 32 字节 base64，用于加密 AI Pro
 - AI API Key 通过 Web 界面「AI 设置」页签配置，支持多供应商
 - 生成加密密钥：`npm run gen-key`
 
+### 数据库
+
+**Docker Compose 部署**：首次启动自动建表，无需任何手动操作。
+
+**托管 PostgreSQL**（Supabase、RDS、Neon 等）：连接数据库后执行一次：
+
+```bash
+psql $DATABASE_URL -f schema.sql
+```
+
+完整表结构见 [`schema.sql`](./schema.sql)。
+
 ### 升级到 v1.7.0
 
 ```bash

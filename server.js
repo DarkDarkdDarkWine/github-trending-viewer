@@ -32,8 +32,7 @@ if (process.env.NODE_ENV !== 'test') {
       console.warn('⚠️  ENCRYPTION_KEY not set, AI keys will be stored in plaintext (legacy mode).');
     }
 
-    await db.ensureReportsSchema();
-    await db.ensureSettingsSchema();
+    await db.ensureSchema();
     startScheduler();
   });
 }
