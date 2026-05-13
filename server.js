@@ -33,6 +33,7 @@ if (process.env.NODE_ENV !== 'test') {
     }
 
     await db.ensureReportsSchema();
+    await db.ensureSettingsSchema();
     startScheduler();
   });
 }

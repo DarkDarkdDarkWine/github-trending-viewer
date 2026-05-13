@@ -113,6 +113,11 @@ async function saveProviders() {
 async function loadTaskAssign() {
   if (taskAssign) return taskAssign;
   try {
+    const db = require('./db');
+    const val = await db.getSetting('ai-task-assign');
+    if (val) { taskAssign = val; return taskAssign; }
+  } catch { /* DB unavailable, fall through */ }
+  try {
     const data = await fs.readFile(TASK_FILE, 'utf8');
     taskAssign = JSON.parse(data);
   } catch {
@@ -122,8 +127,14 @@ async function loadTaskAssign() {
 }
 
 async function saveTaskAssign() {
-  await ensureDataDir();
-  await fs.writeFile(TASK_FILE, JSON.stringify(taskAssign, null, 2));
+  try {
+    const db = require('./db');
+    await db.setSetting('ai-task-assign', taskAssign);
+  } catch { /* DB unavailable, fall through */ }
+  try {
+    await ensureDataDir();
+    await fs.writeFile(TASK_FILE, JSON.stringify(taskAssign, null, 2));
+  } catch { /* best-effort */ }
 }
 
 async function getTaskAssign() {

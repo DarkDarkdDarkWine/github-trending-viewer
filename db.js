@@ -168,6 +168,39 @@ async function ensureReportsSchema() {
   }
 }
 
+async function ensureSettingsSchema() {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key   VARCHAR(255) PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (err) {
+    console.error('DB: ensureSettingsSchema failed:', err.message);
+  }
+}
+
+async function getSetting(key) {
+  const p = getPool();
+  if (!p) return null;
+  const res = await p.query('SELECT value FROM app_settings WHERE key = $1', [key]);
+  return res.rows[0]?.value ?? null;
+}
+
+async function setSetting(key, value) {
+  const p = getPool();
+  if (!p) return;
+  await p.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+    [key, JSON.stringify(value)]
+  );
+}
+
 // 获取或创建报告记录，返回行数据
 async function getOrCreateReport(reportType, periodStart, periodEnd) {
   const p = getPool();
@@ -300,6 +333,9 @@ module.exports = {
   saveTrendingData,
   getPreviousRanking,
   ensureReportsSchema,
+  ensureSettingsSchema,
+  getSetting,
+  setSetting,
   getOrCreateReport,
   markReportDone,
   markReportFailed,

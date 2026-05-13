@@ -1,4 +1,4 @@
-# GitHub Trending Viewer v1.7.0
+# GitHub Trending Viewer v1.7.1
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
 
@@ -223,6 +223,11 @@ github-trending-viewer/
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.7.1 (2026-05-13)
+- 🐛 修复 AI 任务分配（task assign）持久化问题——原存于容器内 JSON 文件，重建容器后丢失，现改为存储在 PostgreSQL `app_settings` 表，容器重建后自动恢复
+- 🐛 修复 AI Provider 选择错误：DeepSeek Key 在容器启动时内存缓存异常时会被跳过，导致降级使用 GLM 并触发 429（GLM 免费额度耗尽），现通过显式 task assign 确保 Provider 选择确定性
+- 🗄️ 新增 `app_settings` 通用 KV 表，供后续配置持久化复用
 
 ### v1.6.0 (2026-05-06)
 - 📝 **每日 AI 深度报告** — 每天自动生成日报，AI 逐项目阅读 README 并撰写中文简介
