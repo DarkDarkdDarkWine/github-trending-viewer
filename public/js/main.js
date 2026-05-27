@@ -160,6 +160,7 @@ let currentTrendingMeta = null;
 
 // Star filter button for Trending page
 const starredFilterBtn = document.getElementById('starredFilterBtn');
+const recommendedSortBtn = document.getElementById('recommendedSortBtn');
 
 if (starredFilterBtn) {
     // Restore from URL param
@@ -170,7 +171,6 @@ if (starredFilterBtn) {
 
     starredFilterBtn.addEventListener('click', () => {
         starredFilterBtn.classList.toggle('active');
-        applyStarredFilter();
         // Persist to URL
         const url = new URL(window.location);
         if (starredFilterBtn.classList.contains('active')) {
@@ -179,16 +179,71 @@ if (starredFilterBtn) {
             url.searchParams.delete('starred');
         }
         window.history.replaceState({}, '', url);
+        updateVisibleRepositories();
+    });
+}
+
+if (recommendedSortBtn) {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('recommended') === 'true') {
+        recommendedSortBtn.classList.add('active');
+    }
+
+    recommendedSortBtn.addEventListener('click', () => {
+        recommendedSortBtn.classList.toggle('active');
+        const url = new URL(window.location);
+        if (recommendedSortBtn.classList.contains('active')) {
+            url.searchParams.set('recommended', 'true');
+        } else {
+            url.searchParams.delete('recommended');
+        }
+        window.history.replaceState({}, '', url);
+
+        if (recommendedSortBtn.classList.contains('active') && !currentRepos.some(repo => typeof repo.matchScore === 'number')) {
+            fetchTrending();
+            return;
+        }
+        updateVisibleRepositories();
     });
 }
 
 function applyStarredFilter() {
+    updateVisibleRepositories();
+}
+
+function updateVisibleRepositories() {
+    const visible = getVisibleRepos();
+    displayRepositories(visible);
+    updateStats(visible.length);
+    updateRecommendedSortButton();
+}
+
+function getVisibleRepos() {
     const isActive = starredFilterBtn?.classList.contains('active');
     const filtered = isActive
         ? currentRepos.filter(r => starredStatus[`${r.author}/${r.name}`] === true)
         : currentRepos;
-    displayRepositories(filtered);
-    updateStats(filtered.length);
+
+    if (!recommendedSortBtn?.classList.contains('active')) {
+        return filtered;
+    }
+
+    return filtered
+        .map((repo, index) => ({ repo, index }))
+        .sort((a, b) => {
+            const scoreA = typeof a.repo.matchScore === 'number' ? a.repo.matchScore : -1;
+            const scoreB = typeof b.repo.matchScore === 'number' ? b.repo.matchScore : -1;
+            return scoreB - scoreA || a.index - b.index;
+        })
+        .map(item => item.repo);
+}
+
+function updateRecommendedSortButton() {
+    if (!recommendedSortBtn) return;
+    const hasScores = currentRepos.some(repo => typeof repo.matchScore === 'number');
+    recommendedSortBtn.title = hasScores
+        ? '按 AI 推荐分排序'
+        : '暂无推荐分，可在 AI 设置后手动刷新推荐';
 }
 
 // Initialize
@@ -212,7 +267,8 @@ async function streamTranslations(repos) {
 
     // Add translation animation to all cards that will be translated
     for (const { index } of texts) {
-        const card = document.querySelector(`[data-repo-index="${index}"]`);
+        const repo = repos[index];
+        const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
         const el = card && card.querySelector('.repo-description');
         if (el) {
             el.classList.add('translating');
@@ -244,7 +300,8 @@ async function streamTranslations(repos) {
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
                 const data = JSON.parse(line.slice(6));
-                const card = document.querySelector(`[data-repo-index="${data.index}"]`);
+                const repo = repos[data.index];
+                const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
                 const el = card && card.querySelector('.repo-description');
                 if (!el) continue;
 
@@ -263,7 +320,8 @@ async function streamTranslations(repos) {
         console.warn('Translation stream failed:', error);
         // On stream failure, mark all pending cards as failed
         for (const { index } of texts) {
-            const card = document.querySelector(`[data-repo-index="${index}"]`);
+            const repo = repos[index];
+            const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
             const el = card && card.querySelector('.repo-description');
             if (el && el.classList.contains('translating')) {
                 el.classList.remove('translating');
@@ -277,12 +335,15 @@ async function streamTranslations(repos) {
 // Fetch trending repositories
 async function fetchTrending() {
     const since = timeRangeSelect.value;
+    const personalize = recommendedSortBtn?.classList.contains('active');
 
     showLoading();
     hideError();
 
     try {
-        const response = await fetch(`${API_BASE}/api/trending?since=${since}`);
+        const query = new URLSearchParams({ since });
+        if (personalize) query.set('personalize', '1');
+        const response = await fetch(`${API_BASE}/api/trending?${query.toString()}`);
         const result = await response.json();
 
         if (!result.success) {
@@ -291,8 +352,7 @@ async function fetchTrending() {
 
         currentRepos = result.data;
         currentTrendingMeta = result.meta || null;
-        displayRepositories(currentRepos);
-        updateStats(currentRepos.length);
+        updateVisibleRepositories();
 
         await checkStarredStatus(currentRepos);
 
@@ -325,8 +385,7 @@ async function checkStarredStatus(repos) {
                 starredStatus[key] = item.starred;
             });
 
-            displayRepositories(currentRepos);
-            applyStarredFilter();
+            updateVisibleRepositories();
         }
     } catch (error) {
         console.error('检查star状态失败:', error);
@@ -390,6 +449,15 @@ function createStarStatus(author, name) {
     return `<a href="${href}" target="_blank" class="star-status not-starred" title="点击前往Star">☆ Star</a>`;
 }
 
+// Create recommendation score badge
+function createMatchBadge(repo) {
+    if (typeof repo.matchScore !== 'number') return '';
+    const tier = repo.matchScore >= 75 ? 'high'
+        : repo.matchScore >= 50 ? 'mid'
+            : 'low';
+    return `<span class="match-badge ${tier}" title="${escapeAttr(repo.matchReason || '')}">✨ ${repo.matchScore}</span>`;
+}
+
 // Create repository card HTML
 function createRepoCard(repo, rank) {
     const languageColor = LANGUAGE_COLORS[repo.language] || '#8b949e';
@@ -397,9 +465,10 @@ function createRepoCard(repo, rank) {
     const authorDisplay = escapeHtml(repo.author);
     const nameDisplay = escapeHtml(repo.name);
     const languageDisplay = repo.language ? escapeHtml(repo.language) : '';
+    const repoKey = escapeAttr(`${repo.author}/${repo.name}`);
 
     return `
-        <div class="repo-card" data-repo-index="${rank - 1}">
+        <div class="repo-card" data-repo-key="${repoKey}">
             <div class="repo-header">
                 <div class="repo-rank">${rank}</div>
                 <div class="repo-info">
@@ -408,6 +477,7 @@ function createRepoCard(repo, rank) {
                             ${authorDisplay} / ${nameDisplay}
                         </a>
                         ${languageDisplay ? `<span class="repo-language">${languageDisplay}</span>` : ''}
+                        ${createMatchBadge(repo)}
                         ${createRankingChange(repo.rankingChange)}
                         ${createStarStatus(repo.author, repo.name)}
                     </div>
@@ -703,7 +773,7 @@ function showReportList() {
 
 // ─── AI 设置 ────────────────────────────────────────────────────────────────
 
-const FEATURE_LABELS = { translate: '翻译', report: '报告', web_search: '联网搜索' };
+const FEATURE_LABELS = { translate: '翻译', report: '报告', recommendation: '推荐', web_search: '联网搜索' };
 const STATUS_TEXTS = { connected: '已连接', error: '连接失败', untested: '待测试', unconfigured: '未配置' };
 
 async function loadProviders() {
@@ -722,7 +792,7 @@ async function loadProviders() {
 
         // 填充任务分配下拉框
         const configuredProviders = providers.filter(p => p.configured);
-        ['translate', 'report'].forEach(task => {
+        ['translate', 'report', 'recommendation'].forEach(task => {
             const sel = document.getElementById(`assign-${task}`);
             if (!sel) return;
             const current = sel.value;
@@ -749,6 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const assign = {
                 translate: document.getElementById('assign-translate').value || null,
                 report: document.getElementById('assign-report').value || null,
+                recommendation: document.getElementById('assign-recommendation').value || null,
             };
             const res = await fetch(`${API_BASE}/api/ai-providers/task-assign`, {
                 method: 'PUT',
@@ -758,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await res.json();
             if (result.success) {
                 showTestResult(resultEl, 'success',
-                    `已保存 · 翻译: ${assign.translate || '自动'} · 报告: ${assign.report || '自动'}`);
+                    `已保存 · 翻译: ${assign.translate || '自动'} · 报告: ${assign.report || '自动'} · 推荐: ${assign.recommendation || '自动'}`);
             } else {
                 showTestResult(resultEl, 'error', result.error);
             }
@@ -797,7 +868,7 @@ function createProviderCard(provider) {
                 <label>翻译模型</label>
                 <div class="model-select-wrap">
                     <select data-model-select="${escapeAttr(provider.id)}" data-role="translate">
-                        ${buildModelOptions(cached, models.translate, provider.defaultModels.translate)}
+                        ${buildModelOptions(cached, models.translate || provider.defaultModels.translate, provider.defaultModels.translate)}
                     </select>
                 </div>
             </div>
@@ -805,7 +876,15 @@ function createProviderCard(provider) {
                 <label>报告模型</label>
                 <div class="model-select-wrap">
                     <select data-model-select="${escapeAttr(provider.id)}" data-role="report">
-                        ${buildModelOptions(cached, models.report, provider.defaultModels.report)}
+                        ${buildModelOptions(cached, models.report || provider.defaultModels.report, provider.defaultModels.report)}
+                    </select>
+                </div>
+            </div>
+            <div class="model-row">
+                <label>推荐模型</label>
+                <div class="model-select-wrap">
+                    <select data-model-select="${escapeAttr(provider.id)}" data-role="recommendation">
+                        ${buildModelOptions(cached, models.recommendation || provider.defaultModels.recommendation, provider.defaultModels.recommendation)}
                     </select>
                 </div>
             </div>
@@ -988,9 +1067,11 @@ function bindProviderEvents() {
             if (action === 'save-models') {
                 const translateSel = card.querySelector(`[data-model-select="${id}"][data-role="translate"]`);
                 const reportSel = card.querySelector(`[data-model-select="${id}"][data-role="report"]`);
+                const recommendationSel = card.querySelector(`[data-model-select="${id}"][data-role="recommendation"]`);
                 const selectedModels = {
                     translate: translateSel.value,
-                    report: reportSel.value
+                    report: reportSel.value,
+                    recommendation: recommendationSel.value
                 };
                 btn.disabled = true;
                 try {
@@ -1001,7 +1082,7 @@ function bindProviderEvents() {
                     });
                     const result = await res.json();
                     if (result.success) {
-                        showTestResult(resultEl, 'success', `模型已保存 · 翻译: ${selectedModels.translate} · 报告: ${selectedModels.report}`);
+                        showTestResult(resultEl, 'success', `模型已保存 · 翻译: ${selectedModels.translate} · 报告: ${selectedModels.report} · 推荐: ${selectedModels.recommendation}`);
                     } else {
                         showTestResult(resultEl, 'error', result.error);
                     }

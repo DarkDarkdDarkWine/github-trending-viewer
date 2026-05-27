@@ -13,13 +13,19 @@ const mockCheckStarredBatch = jest.fn();
 const mockGetStarredRepos = jest.fn();
 const mockGetStarredRepoActivityBatch = jest.fn();
 const mockGetStarredDashboard = jest.fn();
+const mockHasGithubToken = jest.fn();
 const mockTranslate = jest.fn();
+const mockGetProviderForFeature = jest.fn();
+const mockGetRecommendationScoresForRepos = jest.fn();
+const mockRefreshInterestProfile = jest.fn();
+const mockScoreTrendingForUser = jest.fn();
 
 jest.mock('../github-client', () => ({
   checkStarredBatch: mockCheckStarredBatch,
   getStarredRepos: mockGetStarredRepos,
   getStarredRepoActivityBatch: mockGetStarredRepoActivityBatch,
-  getStarredDashboard: mockGetStarredDashboard
+  getStarredDashboard: mockGetStarredDashboard,
+  hasGithubToken: mockHasGithubToken
 }));
 
 // Mock axios to control the trending scrape
@@ -49,7 +55,14 @@ jest.mock('../ai-provider', () => ({
   fetchModels: jest.fn(),
   getTaskAssign: jest.fn().mockResolvedValue({}),
   updateTaskAssign: jest.fn(),
-  updateModels: jest.fn()
+  updateModels: jest.fn(),
+  getProviderForFeature: mockGetProviderForFeature
+}));
+
+jest.mock('../recommender', () => ({
+  getScoresForRepos: mockGetRecommendationScoresForRepos,
+  refreshInterestProfile: mockRefreshInterestProfile,
+  scoreTrendingForUser: mockScoreTrendingForUser
 }));
 
 jest.mock('pg', () => {
@@ -68,6 +81,13 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockHasGithubToken.mockReturnValue(true);
+  mockGetProviderForFeature.mockResolvedValue({
+    preset: { baseUrl: 'https://ai.test', chatPath: '/chat/completions' },
+    apiKey: 'sk-test',
+    model: 'model-test'
+  });
+  mockGetRecommendationScoresForRepos.mockResolvedValue({});
 });
 
 // ─── /api/check-starred ────────────────────────────────────────────────────
@@ -190,6 +210,77 @@ describe('/api/trending caching', () => {
 
     // axios.get should NOT have been called again
     expect(mockAxiosGet.mock.calls.length).toBe(firstCallCount);
+  });
+
+  test('personalized request enriches cached base repos instead of returning plain cache', async () => {
+    mockAxiosGet.mockResolvedValue({
+      data: `
+        <html><body>
+        <article class="Box-row">
+          <h2><a href="/torvalds/linux"></a></h2>
+          <p class="col-9">Linux kernel</p>
+          <span itemprop="programmingLanguage">C</span>
+          <a href="/torvalds/linux/stargazers">100k</a>
+          <span class="float-sm-right">500 stars today</span>
+        </article>
+        </body></html>
+      `
+    });
+
+    const plain = await request(app).get('/api/trending?since=weekly');
+    expect(plain.body.success).toBe(true);
+    expect(plain.body.data[0].matchScore).toBeUndefined();
+
+    mockGetRecommendationScoresForRepos.mockResolvedValue({
+      'torvalds/linux': { score: 88, reason: '匹配底层系统兴趣' }
+    });
+
+    const personalized = await request(app).get('/api/trending?since=weekly&personalize=1');
+
+    expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockGetRecommendationScoresForRepos).toHaveBeenCalledWith(plain.body.data, 'weekly');
+    expect(personalized.body.success).toBe(true);
+    expect(personalized.body.data[0]).toMatchObject({
+      author: 'torvalds',
+      name: 'linux',
+      matchScore: 88,
+      matchReason: '匹配底层系统兴趣'
+    });
+  });
+});
+
+// ─── /api/recommendations/refresh ─────────────────────────────────────────
+
+describe('/api/recommendations/refresh', () => {
+  test('returns a clear error when GitHub token is missing', async () => {
+    mockHasGithubToken.mockReturnValue(false);
+
+    const res = await request(app).post('/api/recommendations/refresh');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'github_token_required'
+    });
+    expect(mockRefreshInterestProfile).not.toHaveBeenCalled();
+  });
+
+  test('refreshes the profile and all time ranges when configured', async () => {
+    mockRefreshInterestProfile.mockResolvedValue({ success: true, profileHash: 'hash' });
+    mockScoreTrendingForUser
+      .mockResolvedValueOnce({ since: 'daily', scored: 2 })
+      .mockResolvedValueOnce({ since: 'weekly', scored: 1 })
+      .mockResolvedValueOnce({ since: 'monthly', scored: 0 });
+
+    const res = await request(app).post('/api/recommendations/refresh');
+
+    expect(res.status).toBe(200);
+    expect(mockGetProviderForFeature).toHaveBeenCalledWith('recommendation');
+    expect(mockRefreshInterestProfile).toHaveBeenCalledTimes(1);
+    expect(mockScoreTrendingForUser).toHaveBeenCalledWith('daily');
+    expect(mockScoreTrendingForUser).toHaveBeenCalledWith('weekly');
+    expect(mockScoreTrendingForUser).toHaveBeenCalledWith('monthly');
+    expect(res.body.data.scores).toHaveLength(3);
   });
 });
 

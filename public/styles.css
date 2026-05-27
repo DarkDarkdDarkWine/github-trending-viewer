@@ -364,6 +364,31 @@ select:focus {
     color: var(--primary-color);
 }
 
+.match-badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}
+
+.match-badge.high {
+    background: rgba(139, 92, 246, 0.18);
+    color: #c4b5fd;
+}
+
+.match-badge.mid {
+    background: rgba(139, 92, 246, 0.10);
+    color: #a78bfa;
+}
+
+.match-badge.low {
+    background: rgba(123, 133, 144, 0.15);
+    color: var(--text-secondary);
+}
+
 /* Star status styles */
 .star-status {
     display: inline-block;
@@ -1339,6 +1364,11 @@ select:focus {
     background: var(--accent-color);
     color: white;
     border-color: var(--accent-color);
+}
+
+.filter-btn.recommended.active {
+    background: #7c3aed;
+    border-color: #8b5cf6;
 }
 
 .activity-empty {

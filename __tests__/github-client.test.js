@@ -17,6 +17,7 @@ const mockRestActivity = {
   listReposStarredByAuthenticatedUser: jest.fn()
 };
 const mockOctokit = {
+  paginate: jest.fn(),
   rest: { activity: mockRestActivity }
 };
 
@@ -141,30 +142,40 @@ describe('github-client: getStarredRepos', () => {
   });
 
   test('calls Octokit REST API with correct params', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
-      data: [
-        {
-          owner: { login: 'torvalds' },
-          name: 'linux',
-          full_name: 'torvalds/linux',
-          description: 'Linux kernel',
-          language: 'C',
-          html_url: 'https://github.com/torvalds/linux',
-          updated_at: '2026-04-15T00:00:00Z'
-        }
-      ]
-    });
+    mockOctokit.paginate.mockResolvedValue([
+      {
+        owner: { login: 'torvalds' },
+        name: 'linux',
+        full_name: 'torvalds/linux',
+        description: 'Linux kernel',
+        language: 'C',
+        html_url: 'https://github.com/torvalds/linux',
+        updated_at: '2026-04-15T00:00:00Z'
+      },
+      {
+        owner: { login: 'facebook' },
+        name: 'react',
+        full_name: 'facebook/react',
+        description: 'React',
+        language: 'JavaScript',
+        html_url: 'https://github.com/facebook/react',
+        updated_at: '2026-04-14T00:00:00Z'
+      }
+    ]);
 
     const gc = require('../github-client');
     const result = await gc.getStarredRepos();
 
-    expect(mockRestActivity.listReposStarredByAuthenticatedUser).toHaveBeenCalledWith({
-      per_page: 100,
-      sort: 'updated',
-      direction: 'desc'
-    });
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(
+      mockRestActivity.listReposStarredByAuthenticatedUser,
+      {
+        per_page: 100,
+        sort: 'updated',
+        direction: 'desc'
+      }
+    );
+    expect(mockRestActivity.listReposStarredByAuthenticatedUser).not.toHaveBeenCalled();
 
-    // Result shape matches what server.js expects
     expect(result).toEqual([{
       owner: 'torvalds',
       name: 'linux',
@@ -174,11 +185,47 @@ describe('github-client: getStarredRepos', () => {
       language: 'C',
       url: 'https://github.com/torvalds/linux',
       updated_at: '2026-04-15T00:00:00Z'
+    }, {
+      owner: 'facebook',
+      name: 'react',
+      full_name: 'facebook/react',
+      description: 'React',
+      descriptionZh: 'React',
+      language: 'JavaScript',
+      url: 'https://github.com/facebook/react',
+      updated_at: '2026-04-14T00:00:00Z'
     }]);
   });
 
+  test('uses Octokit pagination to fetch more than the first page', async () => {
+    const repos = Array.from({ length: 125 }, (_, index) => ({
+      owner: { login: 'owner' },
+      name: `repo-${index}`,
+      full_name: `owner/repo-${index}`,
+      description: `Repository ${index}`,
+      language: 'JavaScript',
+      html_url: `https://github.com/owner/repo-${index}`,
+      updated_at: '2026-04-15T00:00:00Z'
+    }));
+    mockOctokit.paginate.mockResolvedValue(repos);
+
+    const gc = require('../github-client');
+    const result = await gc.getStarredRepos();
+
+    expect(result).toHaveLength(125);
+    expect(result[124].full_name).toBe('owner/repo-124');
+    expect(mockOctokit.paginate).toHaveBeenCalledWith(
+      mockRestActivity.listReposStarredByAuthenticatedUser,
+      {
+      per_page: 100,
+      sort: 'updated',
+      direction: 'desc'
+      }
+    );
+  });
+
   test('returns empty array on API error', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockRejectedValue(
+    mockOctokit.paginate.mockRejectedValue(
       new Error('API error')
     );
 
@@ -351,8 +398,7 @@ describe('github-client: cache', () => {
   });
 
   test('getStarredRepos returns cached result within TTL', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
-      data: [{
+    mockOctokit.paginate.mockResolvedValue([{
         owner: { login: 'torvalds' },
         name: 'linux',
         full_name: 'torvalds/linux',
@@ -360,25 +406,24 @@ describe('github-client: cache', () => {
         language: 'C',
         html_url: 'https://github.com/torvalds/linux',
         updated_at: '2026-04-15T00:00:00Z'
-      }]
-    });
+    }]);
 
     const gc = require('../github-client');
 
     // First call — hits API
     await gc.getStarredRepos();
-    expect(mockRestActivity.listReposStarredByAuthenticatedUser).toHaveBeenCalledTimes(1);
+    expect(mockOctokit.paginate).toHaveBeenCalledTimes(1);
 
     // Second call within TTL — should use cache
     await gc.getStarredRepos();
-    expect(mockRestActivity.listReposStarredByAuthenticatedUser).toHaveBeenCalledTimes(1);
+    expect(mockOctokit.paginate).toHaveBeenCalledTimes(1);
 
     // Advance past TTL (5 minutes + 1ms)
     jest.advanceTimersByTime(5 * 60 * 1000 + 1);
 
     // Third call — cache expired, hits API again
     await gc.getStarredRepos();
-    expect(mockRestActivity.listReposStarredByAuthenticatedUser).toHaveBeenCalledTimes(2);
+    expect(mockOctokit.paginate).toHaveBeenCalledTimes(2);
   });
 
   test('checkStarredBatch returns cached result within TTL', async () => {
@@ -421,8 +466,8 @@ describe('github-client: getStarredDashboard', () => {
   });
 
   test('returns dashboard data with summary and sorted repos (releases first)', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
-      data: Array.from({ length: 5 }, (_, i) => ({
+    mockOctokit.paginate.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
         owner: { login: 'owner' },
         name: `repo${i}`,
         full_name: `owner/repo${i}`,
@@ -433,7 +478,7 @@ describe('github-client: getStarredDashboard', () => {
         stargazers_count: 1000 + i * 100,
         forks_count: 50 + i * 10
       }))
-    });
+    );
 
     mockGraphql.mockResolvedValue({
       repo0: {
@@ -508,7 +553,7 @@ describe('github-client: getStarredDashboard', () => {
   });
 
   test('returns empty dashboard when no starred repos', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({ data: [] });
+    mockOctokit.paginate.mockResolvedValue([]);
     const gc = require('../github-client');
     const result = await gc.getStarredDashboard();
     expect(result.repos).toEqual([]);
@@ -516,14 +561,12 @@ describe('github-client: getStarredDashboard', () => {
   });
 
   test('handles GraphQL error gracefully with REST fallback', async () => {
-    mockRestActivity.listReposStarredByAuthenticatedUser.mockResolvedValue({
-      data: [{
+    mockOctokit.paginate.mockResolvedValue([{
         owner: { login: 'owner' }, name: 'repo',
         full_name: 'owner/repo', description: 'Test', language: 'JS',
         html_url: 'https://github.com/owner/repo', updated_at: '2026-04-16T00:00:00Z',
         stargazers_count: 100, forks_count: 10
-      }]
-    });
+    }]);
     mockGraphql.mockRejectedValue(new Error('GraphQL error'));
 
     const gc = require('../github-client');

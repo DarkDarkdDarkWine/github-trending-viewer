@@ -17,6 +17,7 @@ app.use(require('./src/routes/starred'));
 app.use(require('./src/routes/translate'));
 app.use(require('./src/routes/reports'));
 app.use(require('./src/routes/ai-providers'));
+app.use(require('./src/routes/recommendations'));
 
 module.exports = app;
 

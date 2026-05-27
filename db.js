@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { getShanghaiDateStr } = require('./src/lib/shanghai-date');
 
 let pool = null;
 
@@ -199,11 +200,28 @@ async function ensureSchema() {
           updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )`
     },
+    {
+      name: 'recommendation_scores',
+      sql: `
+        CREATE TABLE IF NOT EXISTS recommendation_scores (
+          id           SERIAL PRIMARY KEY,
+          owner        VARCHAR(255) NOT NULL,
+          name         VARCHAR(255) NOT NULL,
+          since        VARCHAR(16)  NOT NULL,
+          score_date   DATE         NOT NULL,
+          score        SMALLINT     NOT NULL,
+          reason       TEXT,
+          profile_hash VARCHAR(64),
+          created_at   TIMESTAMPTZ  DEFAULT NOW(),
+          UNIQUE (owner, name, since, score_date)
+        )`
+    },
   ];
 
   const indexes = [
     `CREATE INDEX IF NOT EXISTS idx_trending_repos_record_id ON trending_repos (record_id)`,
     `CREATE INDEX IF NOT EXISTS idx_repo_summaries_owner_name ON repo_summaries (owner, name)`,
+    `CREATE INDEX IF NOT EXISTS idx_rec_scores_lookup ON recommendation_scores (since, score_date)`,
   ];
 
   for (const t of tables) {
@@ -241,6 +259,112 @@ async function setSetting(key, value) {
      ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
     [key, JSON.stringify(value)]
   );
+}
+
+async function getUserInterestProfile() {
+  return getSetting('user-interest-profile');
+}
+
+async function setUserInterestProfile(profile) {
+  return setSetting('user-interest-profile', profile);
+}
+
+async function getLatestTrendingRepos(since) {
+  const p = getPool();
+  if (!p) return [];
+  const res = await p.query(
+    `WITH latest_record AS (
+       SELECT id, collect_date
+       FROM trending_records
+       WHERE since = $1
+       ORDER BY collect_date DESC, collected_at DESC, id DESC
+       LIMIT 1
+     )
+     SELECT rp.rank,
+            rp.author AS owner,
+            rp.author,
+            rp.name,
+            rp.description,
+            rp.description_zh,
+            rp.language,
+            rp.stars,
+            rp.period_stars,
+            rp.forks,
+            latest_record.collect_date
+     FROM latest_record
+     JOIN trending_repos rp ON rp.record_id = latest_record.id
+     ORDER BY rp.rank ASC`,
+    [since]
+  );
+  return res.rows;
+}
+
+async function getRecommendationScoresForRepos(repos, since, scoreDate = getShanghaiDateStr()) {
+  const p = getPool();
+  if (!p || repos.length === 0) return {};
+
+  const params = [since, scoreDate];
+  const placeholders = repos.map((repo, i) => {
+    params.push(repo.owner || repo.author, repo.name);
+    return `($${i * 2 + 3}, $${i * 2 + 4})`;
+  });
+
+  const res = await p.query(
+    `SELECT owner, name, score, reason, profile_hash
+     FROM recommendation_scores
+     WHERE since = $1
+       AND score_date = $2
+       AND (owner, name) IN (${placeholders.join(',')})`,
+    params
+  );
+
+  const map = {};
+  res.rows.forEach(row => {
+    map[`${row.owner}/${row.name}`] = {
+      score: row.score,
+      reason: row.reason,
+      profile_hash: row.profile_hash
+    };
+  });
+  return map;
+}
+
+async function upsertRecommendationScores(scores) {
+  const p = getPool();
+  if (!p || scores.length === 0) return { count: 0 };
+
+  const deduped = Array.from(new Map(scores.map(item => [
+    `${item.owner}/${item.name}/${item.since}/${item.score_date || getShanghaiDateStr()}`,
+    item
+  ])).values());
+  const params = [];
+  const values = deduped.map((item, i) => {
+    const base = i * 7;
+    params.push(
+      item.owner,
+      item.name,
+      item.since,
+      item.score_date || getShanghaiDateStr(),
+      item.score,
+      item.reason || null,
+      item.profile_hash || null
+    );
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+  });
+
+  const res = await p.query(
+    `INSERT INTO recommendation_scores (owner, name, since, score_date, score, reason, profile_hash)
+     VALUES ${values.join(',')}
+     ON CONFLICT (owner, name, since, score_date)
+     DO UPDATE SET
+       score = EXCLUDED.score,
+       reason = EXCLUDED.reason,
+       profile_hash = EXCLUDED.profile_hash,
+       created_at = NOW()
+     RETURNING *`,
+    params
+  );
+  return { count: res.rowCount, rows: res.rows };
 }
 
 // 获取或创建报告记录，返回行数据
@@ -379,6 +503,11 @@ module.exports = {
   ensureSettingsSchema,
   getSetting,
   setSetting,
+  getUserInterestProfile,
+  setUserInterestProfile,
+  getLatestTrendingRepos,
+  getRecommendationScoresForRepos,
+  upsertRecommendationScores,
   getOrCreateReport,
   markReportDone,
   markReportFailed,

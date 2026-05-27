@@ -11,7 +11,7 @@ const secretVault = require('./src/crypto/secret-vault');
 const CONFIG_FILE = process.env.AI_PROVIDERS_FILE || path.join(__dirname, 'data', 'ai-providers.json');
 const TASK_FILE = process.env.AI_TASK_ASSIGN_FILE || path.join(__dirname, 'data', 'ai-task-assign.json');
 
-// 任务分配缓存：{ translate: 'deepseek', report: 'glm' }
+// 任务分配缓存：{ translate: 'deepseek', report: 'glm', recommendation: 'deepseek' }
 let taskAssign = null;
 
 // 预设供应商定义
@@ -22,8 +22,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://api.deepseek.com',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'deepseek-chat', report: 'deepseek-chat' },
-    features: ['translate', 'report'],
+    defaultModels: { translate: 'deepseek-chat', report: 'deepseek-chat', recommendation: 'deepseek-chat' },
+    features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
   glm: {
@@ -32,8 +32,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'glm-4-flash', report: 'glm-5' },
-    features: ['translate', 'report', 'web_search'],
+    defaultModels: { translate: 'glm-4-flash', report: 'glm-5', recommendation: 'glm-5' },
+    features: ['translate', 'report', 'recommendation', 'web_search'],
     webSearchModels: ['glm-4-plus', 'glm-5', 'glm-5.1'],
   },
   'glm-coding': {
@@ -42,8 +42,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'glm-4-flash', report: 'glm-5' },
-    features: ['translate', 'report'],
+    defaultModels: { translate: 'glm-4-flash', report: 'glm-5', recommendation: 'glm-5' },
+    features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
   'minimax-coding': {
@@ -52,8 +52,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://api.minimaxi.com/v1',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'MiniMax-M2.5', report: 'MiniMax-M2.5' },
-    features: ['translate', 'report'],
+    defaultModels: { translate: 'MiniMax-M2.5', report: 'MiniMax-M2.5', recommendation: 'MiniMax-M2.5' },
+    features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
   siliconflow: {
@@ -62,8 +62,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://api.siliconflow.com/v1',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'THUDM/GLM-4-9B-0414', report: 'deepseek-ai/DeepSeek-V3' },
-    features: ['translate', 'report'],
+    defaultModels: { translate: 'THUDM/GLM-4-9B-0414', report: 'deepseek-ai/DeepSeek-V3', recommendation: 'deepseek-ai/DeepSeek-V3' },
+    features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
   openrouter: {
@@ -72,8 +72,8 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://openrouter.ai/api/v1',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'google/gemini-2.5-flash', report: 'google/gemini-2.5-flash' },
-    features: ['translate', 'report'],
+    defaultModels: { translate: 'google/gemini-2.5-flash', report: 'google/gemini-2.5-flash', recommendation: 'google/gemini-2.5-flash' },
+    features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
 };

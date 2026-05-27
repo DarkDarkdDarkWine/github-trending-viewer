@@ -33,6 +33,7 @@
 
                 <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
                 <button id="starredFilterBtn" class="filter-btn" title="只看我 Star 过的项目">⭐ 只看我的 Star</button>
+                <button id="recommendedSortBtn" class="filter-btn recommended" title="按 AI 推荐分排序">✨ 推荐排序</button>
             </div>
 
             <div id="loading" class="loading hidden">
@@ -86,6 +87,10 @@
                             <label>报告生成</label>
                             <select id="assign-report"><option value="">自动选择</option></select>
                         </div>
+                        <div class="task-assign-row">
+                            <label>推荐排序</label>
+                            <select id="assign-recommendation"><option value="">自动选择</option></select>
+                        </div>
                         <button class="btn-sm btn-save-assign" id="saveTaskAssign">保存分配</button>
                     </div>
                     <div id="task-assign-result" class="provider-test-result"></div>
@@ -96,6 +101,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script type="module" src="/js/main.js?v=20260508-translate-tabs"></script>
+    <script type="module" src="/js/main.js?v=20260528-recommendations"></script>
 </body>
 </html>

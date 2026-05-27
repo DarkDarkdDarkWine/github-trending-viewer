@@ -47,6 +47,10 @@ function getClient() {
   return { octokit, graphql: graphqlWithAuth };
 }
 
+function hasGithubToken() {
+  return !!GITHUB_TOKEN;
+}
+
 // ─── Batch star status check (1 GraphQL query instead of 20 REST calls) ────
 
 async function checkStarredBatch(repos) {
@@ -94,13 +98,16 @@ async function getStarredRepos() {
   const client = getClient();
 
   try {
-    const response = await client.octokit.rest.activity.listReposStarredByAuthenticatedUser({
-      per_page: 100,
-      sort: 'updated',
-      direction: 'desc'
-    });
+    const repos = await client.octokit.paginate(
+      client.octokit.rest.activity.listReposStarredByAuthenticatedUser,
+      {
+        per_page: 100,
+        sort: 'updated',
+        direction: 'desc'
+      }
+    );
 
-    const data = response.data.map(repo => ({
+    const data = repos.map(repo => ({
       owner: repo.owner.login,
       name: repo.name,
       full_name: repo.full_name,
@@ -370,6 +377,7 @@ async function fetchRepoReadme(owner, name) {
 
 module.exports = {
   checkStarredBatch,
+  hasGithubToken,
   getStarredRepos,
   getStarredRepoActivityBatch,
   getStarredDashboard,

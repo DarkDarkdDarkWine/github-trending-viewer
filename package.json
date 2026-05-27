@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "lint": "eslint server.js src/ ai-provider.js analyzer.js summarizer.js scheduler.js github-client.js db.js scripts/",
+    "lint": "eslint server.js src/ ai-provider.js analyzer.js summarizer.js recommender.js scheduler.js github-client.js db.js scripts/",
     "test": "jest --verbose --forceExit",
     "gen-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
     "migrate:ranking": "node scripts/migrate-ranking-history.js",

@@ -4,6 +4,7 @@ const { runScheduledReports } = require('./analyzer');
 const rankingHistory = require('./src/services/ranking-history');
 const trendingCache = require('./src/services/trending-cache');
 const { scrapeTrending } = require('./src/services/trending-scraper');
+const recommender = require('./recommender');
 
 function startScheduler() {
   cron.schedule('0 14,18,22 * * *', () => runTrendingJob('daily'));
@@ -27,11 +28,27 @@ async function runTrendingJob(since) {
     trendingCache.set(since, reposWithChanges);
     console.log(`[Scheduler] ${since} scrape complete`);
 
+    await refreshRecommendationScores(since);
+
     if (since === 'daily') {
       await runScheduledReports();
     }
   } catch (err) {
     console.error(`[Scheduler] ${since} scrape failed:`, err.message);
+  }
+}
+
+async function refreshRecommendationScores(since) {
+  try {
+    await recommender.refreshInterestProfile();
+  } catch (err) {
+    console.warn('[Scheduler] Recommendation profile refresh failed:', err.message);
+  }
+
+  try {
+    await recommender.scoreTrendingForUser(since);
+  } catch (err) {
+    console.warn(`[Scheduler] Recommendation scoring failed for ${since}:`, err.message);
   }
 }
 

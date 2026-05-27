@@ -75,3 +75,22 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      JSONB        NOT NULL,
   updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+-- ─── 个性化推荐分数 ─────────────────────────────────────────────────────────
+
+-- AI 基于用户 Star 画像为当日 Trending 项目打分；profile_hash 变化时同日覆盖重算
+CREATE TABLE IF NOT EXISTS recommendation_scores (
+  id           SERIAL       PRIMARY KEY,
+  owner        VARCHAR(255) NOT NULL,
+  name         VARCHAR(255) NOT NULL,
+  since        VARCHAR(16)  NOT NULL,
+  score_date   DATE         NOT NULL,
+  score        SMALLINT     NOT NULL,
+  reason       TEXT,
+  profile_hash VARCHAR(64),
+  created_at   TIMESTAMPTZ  DEFAULT NOW(),
+  UNIQUE (owner, name, since, score_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rec_scores_lookup
+  ON recommendation_scores (since, score_date);

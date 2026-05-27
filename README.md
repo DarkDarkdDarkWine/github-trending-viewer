@@ -1,6 +1,6 @@
-# GitHub Trending Viewer v1.7.1
+# GitHub Trending Viewer v1.8.0
 
-一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
+一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、个性化推荐排序、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
 
 ## ✨ 功能特性
 
@@ -14,12 +14,14 @@
 - **翻译失败标记** - 失败项波浪下划线高亮，hover 显示原因
 - **每日 AI 解读** - 每天自动生成日报，AI 阅读每个仓库的 README 后撰写一句话中文简介
 - **简介缓存** - 30 天内同一仓库复用已生成的简介，节省 AI Token 消耗
-- **多供应商支持** - DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter，可自由分配翻译和报告任务
+- **个性化推荐排序** - AI 基于你的 Star 仓库生成兴趣画像，为 Trending 项目打 0-100 匹配分
+- **多供应商支持** - DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter，可自由分配翻译、报告和推荐任务
 - **API Key 加密存储** - AI Provider Key 使用 AES-256-GCM 加密落盘，前端只显示配置状态
 
 ### ⭐ Star 相关
 - **Star 状态显示** - 显示你是否已 Star 该项目
 - **一键跳转** - 点击跳转到 GitHub 页面
+- **推荐排序** - 点击「✨ 推荐排序」后按匹配分排序，默认仍保留原始榜单顺序
 
 ### 📊 排名追踪
 - **排名变化指示** - 显示排名上升↑/下降↓/保持—
@@ -116,7 +118,15 @@ docker compose up -d --build
 1. 选择供应商（DeepSeek / GLM / MiniMax / 硅基流动 / OpenRouter）
 2. 填入 API Key，点击「保存」（自动连通测试）
 3. 选择翻译和报告各自使用的模型
-4. 在「任务分配」中指定翻译和报告由哪个供应商负责
+4. 选择推荐排序使用的模型
+5. 在「任务分配」中指定翻译、报告和推荐由哪个供应商负责
+
+### 个性化推荐策略
+
+- 兴趣画像来自全部 Star 仓库；为控制 Token，AI prompt 最多采样最近更新的 150 个仓库，并截断描述文本
+- `profile_hash` 基于全量 Star 仓库名计算；当你新增或取消 Star 导致 hash 变化时，当日已评分项目会用新画像覆盖重算
+- 推荐分落库到 `recommendation_scores`，按 `owner/name/since/score_date` 去重
+- AI 返回异常 JSON 时仅跳过当前批次，不影响榜单抓取、报告生成或已有推荐分
 
 ## 📡 API 接口
 
@@ -128,8 +138,18 @@ GET /api/trending?since=weekly
 
 参数：
 - `since`: `daily` | `weekly` | `monthly`
+- `personalize`: `1` 时合并当日推荐分，响应项包含 `matchScore` / `matchReason`
 
 返回按本周期新增 star 数降序排列，最多 20 条。
+
+### 手动刷新推荐
+
+```
+POST /api/recommendations/refresh
+Body: { "since": "daily" }  # 可选；不传则刷新 daily/weekly/monthly
+```
+
+需要已配置 `GITHUB_TOKEN` 和支持推荐任务的 AI Provider。成功后会刷新兴趣画像并为当前已入库的 Trending 项目写入推荐分。
 
 ### 流式翻译（SSE）
 
@@ -205,10 +225,11 @@ PUT    /api/ai-providers/task-assign  # 更新任务分配
 github-trending-viewer/
 ├── server.js              # Express 后端服务 + API 路由
 ├── github-client.js       # GitHub API 客户端（Octokit + GraphQL + 缓存）
-├── db.js                  # PostgreSQL 数据库模块（trending / reports / summaries）
+├── db.js                  # PostgreSQL 数据库模块（trending / reports / summaries / recommendations）
 ├── analyzer.js            # 报告生成模块（日报/周报/月报）
 ├── ai-provider.js         # AI 供应商管理（多供应商、模型选择、任务分配）
 ├── summarizer.js          # README 获取 → AI 摘要 → 30天缓存
+├── recommender.js         # Star 兴趣画像 → Trending 推荐评分
 ├── scheduler.js           # 定时调度器（每日自动抓取 + 报告生成）
 ├── package.json           # 项目依赖
 ├── Dockerfile             # Docker 镜像构建
@@ -217,8 +238,8 @@ github-trending-viewer/
 ├── public/
 │   ├── index.html         # 主页面（4 个页签）
 │   ├── styles.css         # 样式（暗色主题 + 翻译动画）
-│   └── app.js             # 前端逻辑
-├── __tests__/             # 测试文件（26 个测试）
+│   └── js/main.js         # 前端逻辑
+├── __tests__/             # 测试文件（55 个测试）
 ├── data/                  # 运行时数据（排名历史、AI 配置）
 └── SETUP.md               # 配置指南
 ```
@@ -235,6 +256,15 @@ github-trending-viewer/
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.8.0 (2026-05-28)
+- ✨ 新增「推荐排序」：基于用户 Star 兴趣画像为 Trending 项目生成匹配分和一句话原因
+- 🧠 新增 `recommender.js`：全量 Star 计算 `profile_hash`，prompt 采样上限 150 个仓库，评分批次最多 20 个项目
+- 🗄️ 新增 `recommendation_scores` 表，按天缓存推荐分；画像 hash 变化时同日评分覆盖重算
+- 🔌 新增 `POST /api/recommendations/refresh`，未配置 GitHub Token 或推荐 AI Provider 时返回明确错误
+- ⚙️ AI 设置页新增「推荐排序」任务分配和推荐模型选择
+- 🐛 修复 Star 仓库读取只取第一页的问题，改为 Octokit pagination
+- 🧪 新增推荐模块、分页、个性化缓存合并和刷新接口测试，55 个测试全通过
 
 ### v1.7.1 (2026-05-13)
 - 🐛 修复 AI 任务分配（task assign）持久化问题——原存于容器内 JSON 文件，重建容器后丢失，现改为存储在 PostgreSQL `app_settings` 表，容器重建后自动恢复
