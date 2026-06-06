@@ -7,6 +7,7 @@ const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
 const secretVault = require('./src/crypto/secret-vault');
+const { withRetry } = require('./src/lib/ai-retry');
 
 const CONFIG_FILE = process.env.AI_PROVIDERS_FILE || path.join(__dirname, 'data', 'ai-providers.json');
 const TASK_FILE = process.env.AI_TASK_ASSIGN_FILE || path.join(__dirname, 'data', 'ai-task-assign.json');
@@ -22,7 +23,7 @@ const PROVIDER_PRESETS = {
     baseUrl: 'https://api.deepseek.com',
     chatPath: '/chat/completions',
     modelsPath: '/models',
-    defaultModels: { translate: 'deepseek-chat', report: 'deepseek-chat', recommendation: 'deepseek-chat' },
+    defaultModels: { translate: 'deepseek-v4-flash', report: 'deepseek-v4-pro', recommendation: 'deepseek-v4-flash' },
     features: ['translate', 'report', 'recommendation'],
     webSearchModels: [],
   },
@@ -350,14 +351,17 @@ async function translate(text) {
   if (!provider) throw new Error('No AI provider configured for translation');
 
   const { preset, apiKey, model } = provider;
-  const response = await axios.post(
-    `${preset.baseUrl}${preset.chatPath}`,
-    {
-      model,
-      max_tokens: 300,
-      messages: [{ role: 'user', content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}` }],
-    },
-    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+  const response = await withRetry(
+    () => axios.post(
+      `${preset.baseUrl}${preset.chatPath}`,
+      {
+        model,
+        max_tokens: 300,
+        messages: [{ role: 'user', content: `请将以下英文翻译成中文，只需返回翻译结果，不要任何解释：\n\n${text}` }],
+      },
+      { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    ),
+    { label: 'Translate' }
   );
   const content = response.data.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error('Empty translation response');
@@ -373,14 +377,17 @@ async function translateBatch(texts) {
   const numbered = texts.map((t, i) => `${i + 1}. ${t}`).join('\n');
 
   try {
-    const response = await axios.post(
-      `${preset.baseUrl}${preset.chatPath}`,
-      {
-        model,
-        max_tokens: 800,
-        messages: [{ role: 'user', content: `将以下英文按原编号翻译成中文，只返回"编号. 译文"格式，不要任何解释：\n${numbered}` }],
-      },
-      { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
+    const response = await withRetry(
+      () => axios.post(
+        `${preset.baseUrl}${preset.chatPath}`,
+        {
+          model,
+          max_tokens: 800,
+          messages: [{ role: 'user', content: `将以下英文按原编号翻译成中文，只返回"编号. 译文"格式，不要任何解释：\n${numbered}` }],
+        },
+        { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
+      ),
+      { label: 'TranslateBatch' }
     );
     const raw = (response.data.choices?.[0]?.message?.content || '').trim();
     const result = [...texts];
@@ -493,10 +500,13 @@ async function generateReport(stats, reportType) {
     body.tools = [{ type: 'web_search', web_search: { enable: true, search_result: true } }];
   }
 
-  const response = await axios.post(
-    `${preset.baseUrl}${preset.chatPath}`,
-    body,
-    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 300000 }
+  const response = await withRetry(
+    () => axios.post(
+      `${preset.baseUrl}${preset.chatPath}`,
+      body,
+      { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 300000 }
+    ),
+    { label: `Report ${reportType}` }
   );
 
   return (response.data.choices?.[0]?.message?.content || '').trim();

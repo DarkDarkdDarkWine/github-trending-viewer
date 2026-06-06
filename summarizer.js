@@ -11,6 +11,7 @@ const db = require('./db');
 const aiProvider = require('./ai-provider');
 const githubClient = require('./github-client');
 const { asyncPool } = require('./src/lib/async-pool');
+const { withRetry } = require('./src/lib/ai-retry');
 
 const README_MAX_CHARS = 3000;
 const SUMMARY_CACHE_DAYS = 30;
@@ -108,20 +109,23 @@ async function callAIForSummary(owner, name, readmeText) {
   const prompt = `阅读以下 GitHub 项目的 README，用 2-3 句中文介绍这个项目：\n1. 它是什么，解决什么问题\n2. 有什么关键特性或亮点\n\n项目 ${owner}/${name} 的 README：\n${readmeText}\n\n介绍：`;
 
   try {
-    const response = await require('axios').post(
-      `${preset.baseUrl}${preset.chatPath}`,
-      {
-        model,
-        max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+    const response = await withRetry(
+      () => require('axios').post(
+        `${preset.baseUrl}${preset.chatPath}`,
+        {
+          model,
+          max_tokens: 400,
+          messages: [{ role: 'user', content: prompt }],
         },
-        timeout: 30000,
-      }
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        }
+      ),
+      { label: `Summarizer ${owner}/${name}` }
     );
     const content = response.data.choices?.[0]?.message?.content?.trim();
     return content || '';
