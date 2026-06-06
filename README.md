@@ -1,4 +1,6 @@
-# GitHub Trending Viewer v1.8.0
+# GitHub Trending Viewer v1.8.1
+
+> 应用界面品牌为「开源趋势工作台 · GitHub Trending Radar」。
 
 一个精美的 GitHub 热门项目查看器，支持中文界面、Star 状态追踪、排名变化、AI 翻译、个性化推荐排序、每日 AI 深度解读、个人 Star 仓库动态监控和自动报告生成。
 
@@ -223,7 +225,7 @@ PUT    /api/ai-providers/task-assign  # 更新任务分配
 
 ```
 github-trending-viewer/
-├── server.js              # Express 后端服务 + API 路由
+├── server.js              # 入口：挂载路由、启动调度器（路由实现见 src/routes/）
 ├── github-client.js       # GitHub API 客户端（Octokit + GraphQL + 缓存）
 ├── db.js                  # PostgreSQL 数据库模块（trending / reports / summaries / recommendations）
 ├── analyzer.js            # 报告生成模块（日报/周报/月报）
@@ -231,16 +233,22 @@ github-trending-viewer/
 ├── summarizer.js          # README 获取 → AI 摘要 → 30天缓存
 ├── recommender.js         # Star 兴趣画像 → Trending 推荐评分
 ├── scheduler.js           # 定时调度器（每日自动抓取 + 报告生成）
+├── src/
+│   ├── routes/            # Express 路由：trending / starred / translate / reports / ai-providers / recommendations
+│   ├── services/          # ranking-history / translate-stream / trending-cache / trending-scraper
+│   ├── lib/               # async-pool（并发限流）/ ai-retry（429 退避重试）/ shanghai-date
+│   └── crypto/            # secret-vault（AES-256-GCM 加密 AI Key）
 ├── package.json           # 项目依赖
 ├── Dockerfile             # Docker 镜像构建
 ├── docker-compose.yml     # Docker 编排配置
+├── schema.sql             # 数据库表结构
 ├── .env.example           # 环境变量示例
 ├── public/
 │   ├── index.html         # 主页面（4 个页签）
 │   ├── styles.css         # 样式（暗色主题 + 翻译动画）
-│   └── js/main.js         # 前端逻辑
-├── __tests__/             # 测试文件（55 个测试）
-├── data/                  # 运行时数据（排名历史、AI 配置）
+│   └── js/main.js         # 前端逻辑（页签、流式翻译、搜索/排序/筛选）
+├── __tests__/             # 测试文件（63 个测试）
+├── data/                  # 运行时数据（AI 供应商配置等）
 └── SETUP.md               # 配置指南
 ```
 
@@ -251,11 +259,21 @@ github-trending-viewer/
 - **数据抓取**: Cheerio + Axios
 - **定时调度**: node-cron
 - **GitHub API**: @octokit/rest + @octokit/graphql
-- **翻译 & 摘要**: DeepSeek V4 / GLM / MiniMax / 硅基流动 / OpenRouter
+- **翻译 & 摘要 & 报告 & 推荐**: DeepSeek（deepseek-v4-flash / deepseek-v4-pro）/ GLM / MiniMax / 硅基流动 / OpenRouter
+- **AI 调用容错**: 429 / 5xx / 网络抖动自动指数退避重试（`src/lib/ai-retry.js`）
 - **数据库**: PostgreSQL
 - **部署**: Docker
 
 ## 📝 更新日志
+
+### v1.8.1 (2026-06-06)
+- 🎨 **UI/UX 迭代** — 界面品牌升级为「开源趋势工作台」，Trending 新增搜索框 + 多维排序（默认/新增 Star/总 Star/Fork/推荐分）+ 清除筛选 + 实时筛选摘要
+- 🌊 **翻译流健壮性** — 新增 45s 超时与 `AbortController`、`translationRunId` 竞态保护（切页签/刷新不再串台）、失败时回填原文、处理流尾残余 buffer、脏数据 `JSON.parse` 容错
+- 🔁 **AI 调用退避重试** — 新增 `src/lib/ai-retry.js`，翻译/摘要/报告/推荐遇 429/5xx/网络抖动自动指数退避重试，并尊重 `Retry-After`
+- 🗄️ **日报失败可自愈** — AI 失败时保留兜底正文但标记为可重试（`markReportDegraded`），下次调度自动重试，成功后覆盖为正式版（此前日报失败会被永久固化为降级版）
+- 🤖 **DeepSeek V4 接入** — 修正 DeepSeek 预设模型（`deepseek-chat` 已下线 → `deepseek-v4-flash` 翻译/推荐、`deepseek-v4-pro` 报告）
+- 🏷️ 修复页面 `<title>` 仍为旧名的问题
+- 🧪 新增 ai-retry 单元测试，63 个测试全通过
 
 ### v1.8.0 (2026-05-28)
 - ✨ 新增「推荐排序」：基于用户 Star 兴趣画像为 Trending 项目生成匹配分和一句话原因
