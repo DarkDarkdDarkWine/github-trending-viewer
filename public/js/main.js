@@ -770,6 +770,7 @@ document.getElementById('reportBackBtn').addEventListener('click', showReportLis
 const REPORT_TYPE_LABEL = { daily: '日报', weekly: '周报', monthly: '月报' };
 const STATUS_LABEL = { pending: '生成中', done: '已完成', failed: '生成失败' };
 const STATUS_CLASS = { pending: 'status-pending', done: 'status-done', failed: 'status-failed' };
+const REPORTS_PAGE_SIZE = 5; // 每类报告首屏显示数量，其余折叠进「加载更多」
 
 async function loadReports() {
     reportsLoading.classList.remove('hidden');
@@ -796,15 +797,41 @@ async function loadReports() {
         let html = '';
         for (const [type, reports] of Object.entries(grouped)) {
             if (reports.length === 0) continue;
-            html += `<div class="report-group"><h2 class="report-group-title">${REPORT_TYPE_LABEL[type] || type}</h2>`;
-            html += reports.map(r => createReportCard(r)).join('');
-            html += '</div>';
+            const cards = reports
+                .map((r, i) => createReportCard(r, i >= REPORTS_PAGE_SIZE))
+                .join('');
+            const remaining = reports.length - REPORTS_PAGE_SIZE;
+            const moreBtn = remaining > 0
+                ? `<button class="ghost-btn report-load-more">加载更多（剩余 ${remaining}）</button>`
+                : '';
+            html += `<div class="report-group" data-type="${type}">
+                        <h2 class="report-group-title">${REPORT_TYPE_LABEL[type] || type}</h2>
+                        ${cards}
+                        ${moreBtn}
+                     </div>`;
         }
         reportsList.innerHTML = html;
 
         // 绑定点击
         reportsList.querySelectorAll('.report-card[data-id]').forEach(card => {
             card.addEventListener('click', () => openReport(parseInt(card.dataset.id)));
+        });
+
+        // 绑定「加载更多」：每次再展开 REPORTS_PAGE_SIZE 个，全部展开后移除按钮
+        reportsList.querySelectorAll('.report-load-more').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const group = btn.closest('.report-group');
+                const hidden = group.querySelectorAll('.report-card-collapsed');
+                hidden.forEach((card, i) => {
+                    if (i < REPORTS_PAGE_SIZE) card.classList.remove('report-card-collapsed');
+                });
+                const left = group.querySelectorAll('.report-card-collapsed').length;
+                if (left > 0) {
+                    btn.textContent = `加载更多（剩余 ${left}）`;
+                } else {
+                    btn.remove();
+                }
+            });
         });
     } catch (err) {
         reportsList.innerHTML = `<div class="activity-empty">加载失败：${escapeHtml(err.message)}</div>`;
@@ -813,7 +840,7 @@ async function loadReports() {
     }
 }
 
-function createReportCard(report) {
+function createReportCard(report, collapsed = false) {
     const typeLabel = escapeHtml(REPORT_TYPE_LABEL[report.report_type] || report.report_type);
     const start = escapeHtml(String(report.period_start).split('T')[0]);
     const end = escapeHtml(String(report.period_end).split('T')[0]);
@@ -826,7 +853,7 @@ function createReportCard(report) {
     const cursor = report.status === 'done' ? 'style="cursor:pointer"' : '';
 
     return `
-        <div class="report-card" ${clickable} ${cursor}>
+        <div class="report-card${collapsed ? ' report-card-collapsed' : ''}" ${clickable} ${cursor}>
             <div class="report-card-header">
                 <span class="report-type-badge">${typeLabel}</span>
                 <span class="report-period">${start} ~ ${end}</span>

@@ -915,6 +915,15 @@ select:hover,
     transform: translateY(-1px);
 }
 
+.report-card-collapsed {
+    display: none;
+}
+
+.report-load-more {
+    width: 100%;
+    margin-top: 2px;
+}
+
 .report-card-header {
     display: flex;
     align-items: center;
