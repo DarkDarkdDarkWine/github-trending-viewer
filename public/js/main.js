@@ -1,4 +1,5 @@
 const API_BASE = window.location.origin;
+const TRANSLATION_STREAM_TIMEOUT_MS = 45000;
 
 // Tab handling
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -153,10 +154,15 @@ const errorEl = document.getElementById('error');
 const statsEl = document.getElementById('stats');
 const repoCountEl = document.getElementById('repoCount');
 const repositoriesEl = document.getElementById('repositories');
+const repoSearchInput = document.getElementById('repoSearch');
+const sortModeSelect = document.getElementById('sortMode');
+const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+const activeFilterSummaryEl = document.getElementById('activeFilterSummary');
 
 let currentRepos = [];
 let starredStatus = {};
 let currentTrendingMeta = null;
+let translationRunId = 0;
 
 // Star filter button for Trending page
 const starredFilterBtn = document.getElementById('starredFilterBtn');
@@ -171,14 +177,7 @@ if (starredFilterBtn) {
 
     starredFilterBtn.addEventListener('click', () => {
         starredFilterBtn.classList.toggle('active');
-        // Persist to URL
-        const url = new URL(window.location);
-        if (starredFilterBtn.classList.contains('active')) {
-            url.searchParams.set('starred', 'true');
-        } else {
-            url.searchParams.delete('starred');
-        }
-        window.history.replaceState({}, '', url);
+        setUrlParam('starred', starredFilterBtn.classList.contains('active') ? 'true' : '');
         updateVisibleRepositories();
     });
 }
@@ -190,16 +189,10 @@ if (recommendedSortBtn) {
     }
 
     recommendedSortBtn.addEventListener('click', () => {
-        recommendedSortBtn.classList.toggle('active');
-        const url = new URL(window.location);
-        if (recommendedSortBtn.classList.contains('active')) {
-            url.searchParams.set('recommended', 'true');
-        } else {
-            url.searchParams.delete('recommended');
-        }
-        window.history.replaceState({}, '', url);
+        const active = !recommendedSortBtn.classList.contains('active');
+        setRecommendedSortActive(active);
 
-        if (recommendedSortBtn.classList.contains('active') && !currentRepos.some(repo => typeof repo.matchScore === 'number')) {
+        if (active && !hasRecommendationScores()) {
             fetchTrending();
             return;
         }
@@ -216,38 +209,167 @@ function updateVisibleRepositories() {
     displayRepositories(visible);
     updateStats(visible.length);
     updateRecommendedSortButton();
+    updateClearFiltersButton();
 }
 
 function getVisibleRepos() {
-    const isActive = starredFilterBtn?.classList.contains('active');
-    const filtered = isActive
-        ? currentRepos.filter(r => starredStatus[`${r.author}/${r.name}`] === true)
-        : currentRepos;
+    let items = currentRepos.map((repo, index) => ({ repo, index }));
 
-    if (!recommendedSortBtn?.classList.contains('active')) {
-        return filtered;
+    if (starredFilterBtn?.classList.contains('active')) {
+        items = items.filter(({ repo }) => starredStatus[`${repo.author}/${repo.name}`] === true);
     }
 
-    return filtered
-        .map((repo, index) => ({ repo, index }))
-        .sort((a, b) => {
-            const scoreA = typeof a.repo.matchScore === 'number' ? a.repo.matchScore : -1;
-            const scoreB = typeof b.repo.matchScore === 'number' ? b.repo.matchScore : -1;
-            return scoreB - scoreA || a.index - b.index;
-        })
-        .map(item => item.repo);
+    const query = getSearchQuery();
+    if (query) {
+        items = items.filter(({ repo }) => repoMatchesQuery(repo, query));
+    }
+
+    return sortVisibleItems(items).map(item => item.repo);
 }
 
 function updateRecommendedSortButton() {
     if (!recommendedSortBtn) return;
-    const hasScores = currentRepos.some(repo => typeof repo.matchScore === 'number');
+    const hasScores = hasRecommendationScores();
     recommendedSortBtn.title = hasScores
         ? '按 AI 推荐分排序'
         : '暂无推荐分，可在 AI 设置后手动刷新推荐';
 }
 
+function initializeListTools() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const query = urlParams.get('q') || '';
+    const sort = urlParams.get('sort') || 'rank';
+
+    if (repoSearchInput) {
+        repoSearchInput.value = query;
+        repoSearchInput.addEventListener('input', () => {
+            setUrlParam('q', repoSearchInput.value.trim());
+            updateVisibleRepositories();
+        });
+    }
+
+    if (sortModeSelect) {
+        if ([...sortModeSelect.options].some(option => option.value === sort)) {
+            sortModeSelect.value = sort;
+        }
+        if (recommendedSortBtn?.classList.contains('active')) {
+            sortModeSelect.value = 'recommendation';
+        }
+        if (sortModeSelect.value === 'recommendation') {
+            recommendedSortBtn?.classList.add('active');
+        }
+        sortModeSelect.addEventListener('change', () => {
+            const sortMode = sortModeSelect.value;
+            setRecommendedSortActive(sortMode === 'recommendation', false);
+            setUrlParam('sort', sortMode === 'rank' ? '' : sortMode);
+
+            if (sortMode === 'recommendation' && !hasRecommendationScores()) {
+                fetchTrending();
+                return;
+            }
+            updateVisibleRepositories();
+        });
+    }
+
+    clearFiltersBtn?.addEventListener('click', () => {
+        if (repoSearchInput) repoSearchInput.value = '';
+        if (sortModeSelect) sortModeSelect.value = 'rank';
+        starredFilterBtn?.classList.remove('active');
+        recommendedSortBtn?.classList.remove('active');
+        ['q', 'sort', 'starred', 'recommended'].forEach(key => setUrlParam(key, ''));
+        updateVisibleRepositories();
+    });
+}
+
+function setRecommendedSortActive(active, syncSortSelect = true) {
+    recommendedSortBtn?.classList.toggle('active', active);
+    setUrlParam('recommended', active ? 'true' : '');
+
+    if (!syncSortSelect || !sortModeSelect) return;
+    sortModeSelect.value = active ? 'recommendation' : 'rank';
+    setUrlParam('sort', active ? 'recommendation' : '');
+}
+
+function setUrlParam(key, value) {
+    const url = new URL(window.location);
+    if (value) {
+        url.searchParams.set(key, value);
+    } else {
+        url.searchParams.delete(key);
+    }
+    window.history.replaceState({}, '', url);
+}
+
+function getSearchQuery() {
+    return repoSearchInput?.value.trim().toLowerCase() || '';
+}
+
+function repoMatchesQuery(repo, query) {
+    return [
+        repo.author,
+        repo.name,
+        repo.language,
+        repo.description,
+        `${repo.author}/${repo.name}`
+    ].some(value => String(value || '').toLowerCase().includes(query));
+}
+
+function sortVisibleItems(items) {
+    const sortMode = recommendedSortBtn?.classList.contains('active')
+        ? 'recommendation'
+        : (sortModeSelect?.value || 'rank');
+
+    const valueFor = {
+        'period-stars': repo => Number(repo.currentPeriodStars || 0),
+        stars: repo => Number(repo.stars || 0),
+        forks: repo => Number(repo.forks || 0),
+        recommendation: repo => typeof repo.matchScore === 'number' ? repo.matchScore : -1
+    }[sortMode];
+
+    if (!valueFor) return items;
+
+    return [...items].sort((a, b) => {
+        const diff = valueFor(b.repo) - valueFor(a.repo);
+        return diff || a.index - b.index;
+    });
+}
+
+function hasRecommendationScores() {
+    return currentRepos.some(repo => typeof repo.matchScore === 'number');
+}
+
+function updateClearFiltersButton() {
+    if (!clearFiltersBtn) return;
+    clearFiltersBtn.disabled = !hasActiveListFilters();
+}
+
+function hasActiveListFilters() {
+    return Boolean(
+        getSearchQuery() ||
+        starredFilterBtn?.classList.contains('active') ||
+        recommendedSortBtn?.classList.contains('active') ||
+        (sortModeSelect && sortModeSelect.value !== 'rank')
+    );
+}
+
+function updateActiveFilterSummary(count) {
+    if (!activeFilterSummaryEl) return;
+    const parts = [];
+    if (getSearchQuery()) parts.push(`搜索 "${repoSearchInput.value.trim()}"`);
+    if (starredFilterBtn?.classList.contains('active')) parts.push('只看 Star');
+    if (recommendedSortBtn?.classList.contains('active')) {
+        parts.push('推荐排序');
+    } else if (sortModeSelect && sortModeSelect.value !== 'rank') {
+        parts.push(sortModeSelect.options[sortModeSelect.selectedIndex].textContent);
+    }
+    activeFilterSummaryEl.textContent = parts.length
+        ? `${parts.join(' · ')} · ${count}/${currentRepos.length}`
+        : '未应用筛选';
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    initializeListTools();
     fetchTrending();
 
     timeRangeSelect.addEventListener('change', fetchTrending);
@@ -256,6 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Stream translations and update each card as results arrive in order
 async function streamTranslations(repos) {
+    const runId = String(++translationRunId);
     const texts = repos
         .map((repo, index) => {
             if (!repo.description) return null;
@@ -272,15 +395,21 @@ async function streamTranslations(repos) {
         const el = card && card.querySelector('.repo-description');
         if (el) {
             el.classList.add('translating');
+            el.classList.remove('translation-done', 'translation-failed');
             el.setAttribute('data-original', el.textContent);
+            el.setAttribute('data-translation-run', runId);
         }
     }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TRANSLATION_STREAM_TIMEOUT_MS);
 
     try {
         const response = await fetch(`${API_BASE}/api/translate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ texts })
+            body: JSON.stringify({ texts }),
+            signal: controller.signal
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -298,38 +427,68 @@ async function streamTranslations(repos) {
             buffer = lines.pop();
 
             for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = JSON.parse(line.slice(6));
-                const repo = repos[data.index];
-                const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
-                const el = card && card.querySelector('.repo-description');
-                if (!el) continue;
-
-                el.classList.remove('translating');
-
-                if (data.error) {
-                    el.classList.add('translation-failed');
-                    el.title = `翻译失败: ${data.message || '未知错误'}`;
-                } else {
-                    el.textContent = data.translation;
-                    el.classList.add('translation-done');
-                }
+                applyTranslationEvent(line, repos, runId);
             }
+        }
+
+        if (buffer.trim()) {
+            applyTranslationEvent(buffer, repos, runId);
         }
     } catch (error) {
         console.warn('Translation stream failed:', error);
-        // On stream failure, mark all pending cards as failed
-        for (const { index } of texts) {
-            const repo = repos[index];
-            const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
-            const el = card && card.querySelector('.repo-description');
-            if (el && el.classList.contains('translating')) {
-                el.classList.remove('translating');
-                el.classList.add('translation-failed');
-                el.title = '翻译连接失败';
-            }
-        }
+        const message = error.name === 'AbortError'
+            ? '翻译超时，已显示原文'
+            : '翻译连接失败，已显示原文';
+        finishPendingTranslations(runId, message);
+    } finally {
+        clearTimeout(timeoutId);
+        finishPendingTranslations(runId, '翻译未返回，已显示原文');
     }
+}
+
+function applyTranslationEvent(line, repos, runId) {
+    if (!line.startsWith('data: ')) return;
+
+    let data;
+    try {
+        data = JSON.parse(line.slice(6));
+    } catch (error) {
+        console.warn('Invalid translation stream event:', error);
+        return;
+    }
+
+    const repo = repos[data.index];
+    const card = repo && document.querySelector(`[data-repo-key="${escapeAttr(`${repo.author}/${repo.name}`)}"]`);
+    const el = card && card.querySelector(`.repo-description[data-translation-run="${runId}"]`);
+    if (!el || !el.classList.contains('translating')) return;
+
+    el.classList.remove('translating');
+    el.removeAttribute('data-translation-run');
+
+    if (data.error || !data.translation) {
+        const original = el.getAttribute('data-original');
+        if (original) el.textContent = original;
+        el.classList.add('translation-failed');
+        el.title = `翻译失败: ${data.message || '未知错误'}`;
+        return;
+    }
+
+    el.textContent = data.translation;
+    el.classList.add('translation-done');
+    el.title = '';
+}
+
+function finishPendingTranslations(runId, message) {
+    document
+        .querySelectorAll(`.repo-description.translating[data-translation-run="${runId}"]`)
+        .forEach(el => {
+            const original = el.getAttribute('data-original');
+            if (original) el.textContent = original;
+            el.classList.remove('translating');
+            el.classList.add('translation-failed');
+            el.removeAttribute('data-translation-run');
+            el.title = message;
+        });
 }
 
 // Fetch trending repositories
@@ -395,10 +554,13 @@ async function checkStarredStatus(repos) {
 // Display repositories
 function displayRepositories(repos) {
     if (!repos || repos.length === 0) {
+        const hasFilters = currentRepos.length > 0 && hasActiveListFilters();
         repositoriesEl.innerHTML = `
-            <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-                <p style="font-size: 1.2rem;">未找到热门项目</p>
-                <p style="margin-top: 0.5rem;">请尝试选择不同的时间范围</p>
+            <div class="activity-empty">
+                <div>
+                    <p>${hasFilters ? '没有匹配当前筛选的项目' : '未找到热门项目'}</p>
+                    <p>${hasFilters ? '清除筛选或换一个关键词试试' : '请尝试选择不同的时间范围'}</p>
+                </div>
             </div>
         `;
         return;
@@ -416,13 +578,13 @@ function displayRepositories(repos) {
 // Create ranking change indicator
 function createRankingChange(rankingChange) {
     if (!rankingChange || rankingChange.isNew) {
-        return '<span class="ranking-change new">🆕 新上榜</span>';
+        return '<span class="ranking-change new">新上榜</span>';
     }
 
     const { change } = rankingChange;
 
     if (change === 0) {
-        return '<span class="ranking-change unchanged">— 保持</span>';
+        return '<span class="ranking-change unchanged">保持</span>';
     }
 
     if (change > 0) {
@@ -442,11 +604,11 @@ function createStarStatus(author, name) {
     }
 
     if (starred) {
-        return '<span class="star-status starred" title="已Star">⭐ 已Star</span>';
+        return '<span class="star-status starred" title="已Star">已 Star</span>';
     }
 
     const href = escapeAttr(`https://github.com/${author}/${name}`);
-    return `<a href="${href}" target="_blank" class="star-status not-starred" title="点击前往Star">☆ Star</a>`;
+    return `<a href="${href}" target="_blank" class="star-status not-starred" title="点击前往Star">Star</a>`;
 }
 
 // Create recommendation score badge
@@ -455,37 +617,43 @@ function createMatchBadge(repo) {
     const tier = repo.matchScore >= 75 ? 'high'
         : repo.matchScore >= 50 ? 'mid'
             : 'low';
-    return `<span class="match-badge ${tier}" title="${escapeAttr(repo.matchReason || '')}">✨ ${repo.matchScore}</span>`;
+    return `<span class="match-badge ${tier}" title="${escapeAttr(repo.matchReason || '')}">推荐 ${repo.matchScore}</span>`;
 }
 
 // Create repository card HTML
 function createRepoCard(repo, rank) {
-    const languageColor = LANGUAGE_COLORS[repo.language] || '#8b949e';
     const repoHref = escapeAttr(repo.url);
     const authorDisplay = escapeHtml(repo.author);
     const nameDisplay = escapeHtml(repo.name);
     const languageDisplay = repo.language ? escapeHtml(repo.language) : '';
     const repoKey = escapeAttr(`${repo.author}/${repo.name}`);
+    const badges = [
+        languageDisplay ? `<span class="repo-language">${languageDisplay}</span>` : '',
+        createMatchBadge(repo),
+        createRankingChange(repo.rankingChange)
+    ].join('');
 
     return `
         <div class="repo-card" data-repo-key="${repoKey}">
             <div class="repo-header">
                 <div class="repo-rank">${rank}</div>
                 <div class="repo-info">
-                    <div class="repo-title">
-                        <a href="${repoHref}" target="_blank" rel="noopener">
-                            ${authorDisplay} / ${nameDisplay}
-                        </a>
-                        ${languageDisplay ? `<span class="repo-language">${languageDisplay}</span>` : ''}
-                        ${createMatchBadge(repo)}
-                        ${createRankingChange(repo.rankingChange)}
-                        ${createStarStatus(repo.author, repo.name)}
+                    <div class="repo-topline">
+                        <div class="repo-title">
+                            <a href="${repoHref}" target="_blank" rel="noopener">
+                                ${authorDisplay} / ${nameDisplay}
+                            </a>
+                            <div class="repo-badges">${badges}</div>
+                        </div>
+                        <div class="repo-actions">
+                            ${createStarStatus(repo.author, repo.name)}
+                        </div>
                     </div>
                     ${repo.description ? `<p class="repo-description">${escapeHtml(repo.description)}</p>` : ''}
                     <div class="repo-stats">
-                        ${createStat('⭐', 'stars', formatNumber(repo.stars), '总星标数')}
-                        ${createStat('🔱', 'forks', formatNumber(repo.forks), 'Fork数')}
-                        ${repo.currentPeriodStars ? createStat('📈', 'current-stars', `+${formatNumber(repo.currentPeriodStars)}`, '本周期新增星标') : ''}
+                        ${createStat('Stars', 'stars', formatNumber(repo.stars), '总星标数')}
+                        ${createStat('Forks', 'forks', formatNumber(repo.forks), 'Fork数')}
+                        ${repo.currentPeriodStars ? createStat('新增', 'current-stars', `+${formatNumber(repo.currentPeriodStars)}`, '本周期新增星标') : ''}
                         ${repo.builtBy && repo.builtBy.length > 0 ? createBuiltBy(repo.builtBy) : ''}
                     </div>
                 </div>
@@ -498,7 +666,7 @@ function createRepoCard(repo, rank) {
 function createStat(icon, className, value, title) {
     return `
         <div class="stat ${className}" title="${title}">
-            <span>${icon}</span>
+            <span class="stat-label">${icon}</span>
             <span class="stat-value">${value}</span>
         </div>
     `;
@@ -506,29 +674,29 @@ function createStat(icon, className, value, title) {
 
 // Create built by section
 function createBuiltBy(contributors) {
+    const contributorNames = contributors
+        .slice(0, 5)
+        .map(contributor => contributor.username)
+        .filter(Boolean)
+        .join(', ');
     const avatars = contributors
         .slice(0, 5)
         .map(contributor => {
             const href = escapeAttr(contributor.url);
             const src = escapeAttr(contributor.avatar);
             const username = escapeAttr(contributor.username);
-            const usernameDisplay = escapeHtml(contributor.username);
             return `
-            <a href="${href}" target="_blank" rel="noopener" title="${username}">
-                <img
-                    src="${src}"
-                    alt="${usernameDisplay}"
-                    style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--card-background);"
-                />
-            </a>
+            <a href="${href}" target="_blank" rel="noopener" title="${username}" tabindex="-1" aria-hidden="true">
+                    <img src="${src}" alt="" />
+                </a>
         `;
         })
         .join('');
 
     return `
         <div class="stat" title="贡献者">
-            <span>👥</span>
-            <div style="display: flex; gap: 4px; align-items: center;">
+            <span class="stat-label">Built by</span>
+            <div class="built-by" aria-label="贡献者：${escapeAttr(contributorNames)}">
                 ${avatars}
             </div>
         </div>
@@ -539,6 +707,7 @@ function createBuiltBy(contributors) {
 function updateStats(count) {
     repoCountEl.textContent = count;
     statsEl.classList.remove('hidden');
+    updateActiveFilterSummary(count);
 }
 
 // Show/hide loading

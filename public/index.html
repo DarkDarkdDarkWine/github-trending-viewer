@@ -1,16 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Trending Viewer</title>
+    <title>开源趋势工作台 · GitHub Trending Radar</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🔥 GitHub 热门项目</h1>
-            <p class="subtitle">探索 GitHub 上最热门的开源项目</p>
+        <header class="app-header">
+            <div class="brand-lockup">
+                <div class="brand-mark" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div>
+                    <p class="eyebrow">GitHub Trending Radar</p>
+                    <h1>开源趋势工作台</h1>
+                    <p class="subtitle">追踪热门仓库、排名变化、Star 资产与 AI 推荐信号。</p>
+                </div>
+            </div>
+            <div class="header-status" aria-label="能力状态">
+                <span>趋势抓取</span>
+                <span>Star 监控</span>
+                <span>AI 翻译</span>
+            </div>
         </header>
 
         <nav class="tabs">
@@ -21,30 +36,58 @@
         </nav>
 
         <div id="tab-trending" class="tab-content active">
-            <div class="filters">
+            <section class="trend-console" aria-label="趋势控制台">
+                <div class="console-copy">
+                    <span class="section-kicker">Live feed</span>
+                    <h2>热门趋势</h2>
+                    <p>按时间窗口查看仓库热度，并把翻译、收藏状态和推荐分直接叠到列表里。</p>
+                </div>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="timeRange">时间范围</label>
+                        <select id="timeRange">
+                            <option value="daily" selected>今天</option>
+                            <option value="weekly">本周</option>
+                            <option value="monthly">本月</option>
+                        </select>
+                    </div>
+
+                    <button id="refreshBtn" class="refresh-btn">刷新</button>
+                    <button id="starredFilterBtn" class="filter-btn" title="只看我 Star 过的项目">只看 Star</button>
+                    <button id="recommendedSortBtn" class="filter-btn recommended" title="按 AI 推荐分排序">推荐排序</button>
+                </div>
+            </section>
+
+            <section class="inspector-bar" aria-label="列表筛选与排序">
+                <label class="search-box" for="repoSearch">
+                    <span>搜索</span>
+                    <input id="repoSearch" type="search" placeholder="仓库 / 作者 / 语言 / 描述" autocomplete="off">
+                </label>
                 <div class="filter-group">
-                    <label for="timeRange">时间范围：</label>
-                    <select id="timeRange">
-                        <option value="daily" selected>今天</option>
-                        <option value="weekly">本周</option>
-                        <option value="monthly">本月</option>
+                    <label for="sortMode">排序</label>
+                    <select id="sortMode">
+                        <option value="rank" selected>默认排名</option>
+                        <option value="period-stars">新增 Star</option>
+                        <option value="stars">总 Star</option>
+                        <option value="forks">Fork 数</option>
+                        <option value="recommendation">推荐分</option>
                     </select>
                 </div>
-
-                <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
-                <button id="starredFilterBtn" class="filter-btn" title="只看我 Star 过的项目">⭐ 只看我的 Star</button>
-                <button id="recommendedSortBtn" class="filter-btn recommended" title="按 AI 推荐分排序">✨ 推荐排序</button>
-            </div>
+                <button id="clearFiltersBtn" class="ghost-btn">清除筛选</button>
+                <div id="activeFilterSummary" class="active-filter-summary" aria-live="polite"></div>
+            </section>
 
             <div id="loading" class="loading hidden">
                 <div class="spinner"></div>
-                <p>正在加载热门项目...</p>
+                <p>正在同步趋势数据...</p>
             </div>
 
             <div id="error" class="error hidden"></div>
 
             <div id="stats" class="stats hidden">
-                找到 <span id="repoCount">0</span> 个项目
+                <span class="stats-label">当前列表</span>
+                <strong><span id="repoCount">0</span></strong>
+                <span>个项目</span>
             </div>
 
             <div id="repositories" class="repositories"></div>
@@ -101,6 +144,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script type="module" src="/js/main.js?v=20260528-recommendations"></script>
+    <script type="module" src="/js/main.js?v=20260606-interactions"></script>
 </body>
 </html>
