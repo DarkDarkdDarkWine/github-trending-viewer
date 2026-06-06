@@ -405,6 +405,20 @@ async function markReportFailed(id, errorMsg) {
   );
 }
 
+// 标记报告降级：保留可展示的兜底正文，但状态仍为 failed，
+// 以便 getRetryableReports 在下次调度时重试（成功后由 markReportDone 覆盖）。
+async function markReportDegraded(id, contentMd, statsJson, errorMsg) {
+  const p = getPool();
+  if (!p) return;
+  await p.query(
+    `UPDATE analysis_reports
+     SET status = 'failed', retry_count = retry_count + 1,
+         content_md = $2, stats_json = $3, error_msg = $4, generated_at = NOW()
+     WHERE id = $1`,
+    [id, contentMd, JSON.stringify(statsJson), errorMsg]
+  );
+}
+
 // 列出所有报告（不含正文）
 async function listReports() {
   const p = getPool();
@@ -511,6 +525,7 @@ module.exports = {
   getOrCreateReport,
   markReportDone,
   markReportFailed,
+  markReportDegraded,
   listReports,
   getReport,
   getRetryableReports,

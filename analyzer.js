@@ -2,6 +2,7 @@ const db = require('./db');
 const aiProvider = require('./ai-provider');
 const { ensureSummaries } = require('./summarizer');
 const { getShanghaiDateStr } = require('./src/lib/shanghai-date');
+const { withRetry } = require('./src/lib/ai-retry');
 
 // 根据上海时区的今天，计算应该生成哪些报告
 function getReportsDueToday() {
@@ -283,24 +284,28 @@ ${top10.map(r =>
 
   // 5. Call AI
   let contentMd;
+  let aiError = null;
   try {
     const provider = await aiProvider.getProviderForFeature('report');
     if (!provider) throw new Error('No AI provider configured');
 
-    const response = await require('axios').post(
-      `${provider.preset.baseUrl}${provider.preset.chatPath}`,
-      {
-        model: provider.model,
-        max_tokens: 6000,
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${provider.apiKey}`,
-          'Content-Type': 'application/json',
+    const response = await withRetry(
+      () => require('axios').post(
+        `${provider.preset.baseUrl}${provider.preset.chatPath}`,
+        {
+          model: provider.model,
+          max_tokens: 6000,
+          messages: [{ role: 'user', content: prompt }],
         },
-        timeout: 180000,
-      }
+        {
+          headers: {
+            'Authorization': `Bearer ${provider.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 180000,
+        }
+      ),
+      { label: 'DailyReport' }
     );
     contentMd = response.data.choices?.[0]?.message?.content?.trim();
     if (!contentMd) throw new Error('Empty AI response');
@@ -308,6 +313,7 @@ ${top10.map(r =>
     // Prepend title
     contentMd = `# 📰 GitHub 技术情报 · ${displayDate}\n\n---\n\n${contentMd}`;
   } catch (err) {
+    aiError = err.message;
     console.error(`Daily report AI failed: ${err.message}`);
     // Fallback: build a simple list from summaries
     const lines = [
@@ -351,6 +357,13 @@ ${top10.map(r =>
     language_distribution: [],
     daily_counts: []
   };
+
+  // AI 失败时存兜底正文但标记为可重试，使下次调度自动重试（成功后覆盖为正式版）。
+  if (aiError) {
+    await db.markReportDegraded(report.id, contentMd, stats, aiError);
+    console.warn(`Daily report ${report.id} degraded (will retry): ${aiError}`);
+    return { id: report.id, success: false, degraded: true, reason: aiError };
+  }
 
   await db.markReportDone(report.id, contentMd, stats);
   console.log(`Daily report ${report.id} done`);
