@@ -512,11 +512,15 @@ async function generateReport(stats, reportType) {
   const aiContent = (response.data.choices?.[0]?.message?.content || '').trim();
 
   // 标题 + 确定性「数据速览」(语言分布表，免 AI)
+  const fmtDate = (d) => {
+    const t = new Date(d);
+    return Number.isNaN(t.getTime()) ? String(d).split('T')[0] : t.toISOString().split('T')[0];
+  };
   const langs = (stats.language_distribution || []).slice(0, 8);
   const langTable = langs.length
     ? `### 语言分布\n\n| 语言 | 占比 | 上榜次数 |\n| --- | --- | --- |\n${langs.map(l => `| ${l.language} | ${l.pct}% | ${l.count} |`).join('\n')}\n\n`
     : '';
-  const digest = `# 📈 GitHub 趋势${label}报 · ${stats.period_start} ~ ${stats.period_end}\n\n`
+  const digest = `# 📈 GitHub 趋势${label}报 · ${fmtDate(stats.period_start)} ~ ${fmtDate(stats.period_end)}\n\n`
     + `## 📊 数据速览\n\n总上榜 ${stats.total_appearances} 次 · 独立项目 ${stats.unique_repos} 个\n\n${langTable}---\n\n`;
 
   return digest + aiContent;
