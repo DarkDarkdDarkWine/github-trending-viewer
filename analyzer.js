@@ -252,6 +252,20 @@ async function generateDailyReport(report) {
 
   const top10 = repoData.slice(0, 10);
 
+  // 确定性数据速览（免 AI）：新上榜/老将、主力语言
+  const newcomers = top10.filter(r => r.streak.includes('首次')).length;
+  const langTally = {};
+  top10.forEach(r => {
+    const lang = r.language || '未知';
+    langTally[lang] = (langTally[lang] || 0) + 1;
+  });
+  const topLangs = Object.entries(langTally)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([lang, count]) => `${lang}×${count}`)
+    .join('、');
+  const dataLine = `> 📊 Top ${top10.length} · 新上榜 ${newcomers} · 老将 ${top10.length - newcomers} · 主力语言 ${topLangs}`;
+
   const prompt = `你是一位资深技术趋势分析师。以下是 ${displayDate} GitHub Trending 日榜前 10 名项目数据。
 
 请撰写一份技术情报简报，用 Markdown。必须完整输出以下四个章节，缺一不可：
@@ -260,21 +274,21 @@ async function generateDailyReport(report) {
 一段 150 字以内自然叙述，指出今天热榜的核心叙事——什么主题在升温、有什么意想不到的项目。写成完整段落，不列清单。
 
 ## 🏆 前 10 名
-每个项目格式（10 个都要写）：
+每个项目一行（10 个都要写，保持简洁）：
 **N. owner/repo** · ⭐ +todayStars（总 totalStars）· streak
-> 定性判断（你读数据后的见解，不复制摘要）
-> 技术看点：1-2 个具体亮点
+> 一句话定性判断（读数据后的见解，不复制摘要，40 字以内）
 
 ## 💡 值得深看
-挑 2-3 个最值得花时间的项目：
+挑 2-3 个最值得花时间的项目，给出「前 10 名」一行之外的新增视角：
 **owner/repo**
 - 关注理由
 - 建议关注什么
 
 ## ⏱ 一刻钟速览
-打开这 3 个：repo 名 + 一句话理由 + 链接
+另选 3 个（不要与「值得深看」重复）：repo 名 + 一句话理由 + 链接
 
 禁止输出"我们分析""根据数据""作为分析师"等前缀。直接写内容。
+注意：「值得深看」与「一刻钟速览」不要推荐同一个项目。
 
 ${top10.map(r =>
   `${r.rank}. ${r.repo} (${r.language || '未知'})
@@ -289,11 +303,14 @@ ${top10.map(r =>
     const provider = await aiProvider.getProviderForFeature('report');
     if (!provider) throw new Error('No AI provider configured');
 
+    // 日报为高频快报，优先用该供应商的轻量(翻译档)模型降本，回退到报告模型
+    const dailyModel = provider.preset?.defaultModels?.translate || provider.model;
+
     const response = await withRetry(
       () => require('axios').post(
         `${provider.preset.baseUrl}${provider.preset.chatPath}`,
         {
-          model: provider.model,
+          model: dailyModel,
           max_tokens: 6000,
           messages: [{ role: 'user', content: prompt }],
         },
@@ -310,14 +327,16 @@ ${top10.map(r =>
     contentMd = response.data.choices?.[0]?.message?.content?.trim();
     if (!contentMd) throw new Error('Empty AI response');
 
-    // Prepend title
-    contentMd = `# 📰 GitHub 技术情报 · ${displayDate}\n\n---\n\n${contentMd}`;
+    // Prepend title + 数据速览
+    contentMd = `# 📰 GitHub 技术情报 · ${displayDate}\n\n${dataLine}\n\n---\n\n${contentMd}`;
   } catch (err) {
     aiError = err.message;
     console.error(`Daily report AI failed: ${err.message}`);
     // Fallback: build a simple list from summaries
     const lines = [
       `# 📰 GitHub 技术情报 · ${displayDate}`,
+      '',
+      dataLine,
       '',
       '> ⚠️ AI 分析生成失败，以下为基础数据',
       '',
